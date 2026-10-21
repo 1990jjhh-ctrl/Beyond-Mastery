@@ -59,8 +59,13 @@ static void TestRuntimeGate()
 	CHECK(IsSupportedRuntime({ 1, 6, 1170, 0 }));
 	CHECK(IsSupportedRuntime({ 1, 7, 104, 0 }));  // the installed runtime
 	CHECK(!IsSupportedRuntime({ 1, 4, 15, 0 }));  // pre-SE-1.5.97
-	CHECK(!IsSupportedRuntime({ 1, 2, 15, 0 }));  // VR/LE are out of scope (PRD §3)
+	CHECK(!IsSupportedRuntime({ 1, 4, 15, 0 }));  // VR is 1.4.15 (PRD §3)
+	CHECK(!IsSupportedRuntime({ 1, 2, 15, 0 }));  // early LE builds
 	CHECK(!IsSupportedRuntime({ 1, 5, 96, 0 }));  // older SE builds are not targeted
+	// The gate is a lower bound only, so LE 1.9.32 passes it. Harmless: a
+	// CommonLibSSE-NG plugin cannot load into LE at all, and SKSE64 would not
+	// be there to load it. Asserted so the gap is recorded, not assumed absent.
+	CHECK(IsSupportedRuntime({ 1, 9, 32, 0 }));
 
 	// kMaxKnownRuntime is the newest build whose sites we verified ourselves;
 	// anything past it still runs, but the plugin says so in the log.

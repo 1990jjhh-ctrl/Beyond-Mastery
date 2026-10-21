@@ -1,6 +1,6 @@
 # Beyond Mastery
 
-SKSE plugin for Skyrim SE 1.5.97 and AE 1.6.x: raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems. Skill effects above 100 continue sub-linearly or asymptotically.
+SKSE plugin for Skyrim SE 1.5.97, AE 1.6.x and 1.7.x: raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems. Skill effects above 100 continue sub-linearly or asymptotically.
 
 - Requirements: [PRD.md](PRD.md)
 - Engine hook design: [docs/hook-points.md](docs/hook-points.md)

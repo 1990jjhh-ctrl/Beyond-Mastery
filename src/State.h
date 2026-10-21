@@ -12,6 +12,7 @@ namespace BM
 	public:
 		static constexpr std::uint16_t kDefaultCap = 100;
 
+
 		static State& Get() noexcept;
 
 		[[nodiscard]] std::uint16_t Cap(std::size_t a_skill) const noexcept { return _caps[a_skill]; }

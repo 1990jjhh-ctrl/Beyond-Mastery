@@ -32,6 +32,11 @@ namespace BM::Hooks
 	// the caller can fold it into the single FR-20 warning.
 	[[nodiscard]] bool AnySignatureMismatch() noexcept;
 
+	// True when the Address Library for this runtime is absent. Nothing that
+	// resolves a relocation may run in that state -- including
+	// RE::DebugMessageBox, which resolves several of its own.
+	[[nodiscard]] bool AddressLibraryMissing() noexcept;
+
 	// Callee of the cap trampoline: the cap for a_av, or the vanilla 100 for
 	// anything that is not a skill. Replaces the constant 100.0 the XP routine
 	// would otherwise load (FR-2, FR-8).

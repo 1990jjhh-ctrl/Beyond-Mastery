@@ -1,7 +1,7 @@
 # Beyond Mastery — Hook-Point Design
 
 Status: Draft v0.1 (2026-10-21)
-Scope: maps every PRD requirement that needs engine access to a concrete hook or API, for SE 1.5.97 and AE 1.6.x.
+Scope: maps every PRD requirement that needs engine access to a concrete hook or API, for SE 1.5.97, AE 1.6.x and 1.7.x.
 
 ## Sources
 
@@ -34,6 +34,16 @@ Compatibility note: the reference mod overwrites ≥14 bytes here and NOPs the l
 | XP gain computed as `base × mult + offset` before it is added | 40554+0xDC | 41561+0xF1 | H |
 
 The hook receives the skill and both XP components and returns the total. We multiply by `f^(T−1)` for base level ≥ 200 (T ≥ 2). At default f = 1.0 the hook is a no-op and can stay uninstalled.
+
+**Known gap.** Just above this site the routine branches on its sixth argument
+(`cmp BYTE PTR [rsp+0x1d8], 0; je`). The arm we patch computes
+`ImproveMult × points + ImproveOffset`; the other arm stores the raw `points`
+with no multiplier and is **not** hooked, so `f^(T−1)` does not apply to
+whatever calls the engine with that flag clear. Reaching it needs a second
+patch at that store (9 bytes, `movss [rsp+0x1b8], xmm6`). Unresolved: what the
+flag means and which callers clear it. Until that is known the factor is a
+reduction some XP sources escape, which under-applies the penalty rather than
+over-applying it.
 
 ## 3. Character XP per skill-up (FR-11)
 

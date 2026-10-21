@@ -1,5 +1,7 @@
 #include "State.h"
 
+#include "Curves.h"
+
 namespace BM
 {
 	namespace
@@ -55,9 +57,10 @@ namespace BM
 				continue;
 			}
 			for (std::size_t i = 0; i < caps.size(); ++i) {
-				// Sanity: caps are multiples of 10 and >= 100.
+				// Sanity: caps are multiples of 10, at least 100, and not past
+				// kMaxCap. Anything else is damaged data, not a cap.
 				const auto c = caps[i];
-				state._caps[i] = (c >= kDefaultCap && c % 10 == 0) ? c : kDefaultCap;
+				state._caps[i] = Curves::IsPlausibleCap(c) ? c : kDefaultCap;
 			}
 		}
 

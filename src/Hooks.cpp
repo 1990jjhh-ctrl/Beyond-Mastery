@@ -2,9 +2,10 @@
 
 #include "Config.h"
 #include "Curves.h"
+#include "Skills.h"
 #include "State.h"
+#include "Stubs.h"
 
-#include <xbyak/xbyak.h>
 
 #include <filesystem>
 #include <format>
@@ -18,12 +19,6 @@ namespace BM::Hooks
 		bool g_capHookInstalled = false;
 		bool g_xpGainHookInstalled = false;
 
-		// Bytes from the cap site's start to the `movss xmm10, [rip+..]` that
-		// loads the vanilla 100.0: call [rax+0x18] (3) + movaps xmm8,xmm0 (4).
-		constexpr std::uint32_t kCapLoadOffset = 7;
-
-		// Length of that movss, and so of the region we replace.
-		constexpr std::size_t kCapLoadLength = 9;
 
 		// REL::Module classifies a runtime by minor version: 4 = VR, 5 = SE,
 		// 6 and above = AE. So 1.7.x takes the AE path throughout -- the AE
@@ -37,6 +32,12 @@ namespace BM::Hooks
 					   std::format("Data/SKSE/Plugins/versionlib-{}.bin", version.string()) :
 					   std::format("Data/SKSE/Plugins/version-{}.bin", version.string());
 		}
+
+		// Sites this milestone actually patches. The other seven are resolved
+		// and reported because that is useful confidence, but a mismatch there
+		// is not this build's problem: warning the player about a function we
+		// never touch is a false positive, and the later plans will claim them.
+		[[nodiscard]] bool SiteIsNeeded(const HookSites::Site& a_site) noexcept;
 
 		struct Checked
 		{
@@ -70,67 +71,13 @@ namespace BM::Hooks
 
 	namespace
 	{
-		// Replaces the vanilla `movss xmm10, [rip+100.0]` with a call to
-		// GetSkillCap, so xmm10 carries this skill's own cap into the comiss
-		// that follows.
-		//
-		// At the patch point: esi holds the skill ActorValue (callee-saved, so
-		// it survives our call), xmm0 holds the level the engine just fetched
-		// and the comiss needs it, and xmm10 is what we must set. xmm0-xmm5 are
-		// volatile across a call, so xmm0 is saved here; xmm6-xmm15 are
-		// callee-saved, so xmm8 and xmm10 need no saving.
-		struct CapStub : Xbyak::CodeGenerator
-		{
-			explicit CapStub(std::uintptr_t a_callee)
-			{
-				// After the call into this stub rsp % 16 == 8, so subtracting
-				// 0x38 re-aligns it to 16 and leaves 0x20 of shadow space for
-				// the callee plus an aligned 16-byte slot at rsp+0x20.
-				sub(rsp, 0x38);
-				movaps(ptr[rsp + 0x20], xmm0);
-				mov(ecx, esi);  // the skill actor value is the only argument
-				mov(rax, a_callee);
-				call(rax);
-				movaps(xmm10, xmm0);  // the cap we just computed
-				movaps(xmm0, ptr[rsp + 0x20]);
-				add(rsp, 0x38);
-				ret();
-			}
-		};
-
-		// Replaces the three instructions that compute the XP to add:
-		//
-		//   movss xmm0, [rsp+0x30]   ; ImproveMult, filled by the call above
-		//   mulss xmm0, xmm6         ; the points argument, saved in the prologue
-		//   addss xmm0, [rsp+0x34]   ; ImproveOffset
-		//
-		// 16 bytes in total, leaving the result in xmm0 exactly as the engine
-		// expects. esi still holds the skill actor value. Our own sub rsp
-		// shifts the two stack operands, hence the +0x38.
-		struct XPGainStub : Xbyak::CodeGenerator
-		{
-			explicit XPGainStub(std::uintptr_t a_callee)
-			{
-				sub(rsp, 0x38);
-				mov(ecx, esi);                              // arg 0: actor value
-				movss(xmm1, ptr[rsp + 0x38 + 0x30]);        // arg 1: ImproveMult
-				movaps(xmm2, xmm6);                         // arg 2: points
-				movss(xmm3, ptr[rsp + 0x38 + 0x34]);        // arg 3: ImproveOffset
-				mov(rax, a_callee);
-				call(rax);                                  // result in xmm0
-				add(rsp, 0x38);
-				ret();
-			}
-		};
-
-		// Writes the 5-byte call and NOPs the 4 bytes of the 9-byte movss that
-		// it does not cover, so no fragment of the old instruction executes.
-		// Length of the three replaced instructions at the XP gain site.
-		constexpr std::size_t kXPGainLength = 16;
+		// Both installers write a 5-byte call and NOP the rest of the region
+		// they replace, so no fragment of a part-overwritten instruction can
+		// execute. The region lengths live in Stubs.h beside the stubs.
 
 		bool InstallXPGainHook(std::uintptr_t a_siteAddress)
 		{
-			XPGainStub code{ reinterpret_cast<std::uintptr_t>(&ImprovePlayerSkillPoints) };
+			Stubs::XPGainStub code{ reinterpret_cast<std::uintptr_t>(&ImprovePlayerSkillPoints) };
 			code.ready();
 
 			auto& trampoline = SKSE::GetTrampoline();
@@ -142,7 +89,7 @@ namespace BM::Hooks
 			std::memcpy(stub, code.getCode(), code.getSize());
 
 			trampoline.write_call<5>(a_siteAddress, reinterpret_cast<std::uintptr_t>(stub));
-			std::array<std::uint8_t, kXPGainLength - 5> nops{};
+			std::array<std::uint8_t, Stubs::kXPGainLength - 5> nops{};
 			nops.fill(REL::NOP);
 			REL::safe_write(a_siteAddress + 5, nops.data(), nops.size());
 
@@ -153,12 +100,20 @@ namespace BM::Hooks
 
 		bool InstallCapHook(std::uintptr_t a_siteAddress)
 		{
-			const auto target = a_siteAddress + kCapLoadOffset;
+			// kCapLoadOffset and the stub's register choices are AE/1.7.x only;
+			// SE puts the load at a different offset and the cap in xmm6. The
+			// caller checks this too, but a mis-patch here is unrecoverable.
+			if (!UseAE()) {
+				logger::error("Refusing to install the cap hook on a non-AE runtime");
+				return false;
+			}
+
+			const auto target = a_siteAddress + Stubs::kCapLoadOffset;
 
 			// Generate first: the allocation must be the size of the emitted
 			// code, not sizeof(CapStub), which is the size of the generator
 			// object and unrelated to the instructions it produced.
-			CapStub code{ reinterpret_cast<std::uintptr_t>(&GetSkillCap) };
+			Stubs::CapStub code{ reinterpret_cast<std::uintptr_t>(&GetSkillCap) };
 			code.ready();
 
 			auto& trampoline = SKSE::GetTrampoline();
@@ -170,7 +125,7 @@ namespace BM::Hooks
 			std::memcpy(stub, code.getCode(), code.getSize());
 
 			trampoline.write_call<5>(target, reinterpret_cast<std::uintptr_t>(stub));
-			constexpr std::uint8_t nops[kCapLoadLength - 5]{ REL::NOP, REL::NOP, REL::NOP, REL::NOP };
+			constexpr std::uint8_t nops[Stubs::kCapLoadLength - 5]{ REL::NOP, REL::NOP, REL::NOP, REL::NOP };
 			REL::safe_write(target + 5, nops, sizeof(nops));
 
 			logger::info("Cap hook installed at {:#x} (stub {:#x})", target,
@@ -237,6 +192,25 @@ namespace BM::Hooks
 		return g_signatureMismatch;
 	}
 
+	bool AddressLibraryMissing() noexcept
+	{
+		return g_addressLibraryMissing;
+	}
+
+	namespace
+	{
+		bool SiteIsNeeded(const HookSites::Site& a_site) noexcept
+		{
+			if (&a_site == &HookSites::kGetSkillCap) {
+				return UseAE();  // SE's patch shape is unverified; see HookSites.h
+			}
+			if (&a_site == &HookSites::kImprovePlayerSkillPoints) {
+				return UseAE() && Config::Get().xpGainFactorPerTier < 1.0;
+			}
+			return false;
+		}
+	}
+
 	bool InstallAll()
 	{
 		g_signatureMismatch = false;
@@ -260,19 +234,21 @@ namespace BM::Hooks
 		bool allReady = true;
 		for (const auto* site : HookSites::kAllSites) {
 			const auto checked = CheckDetailed(*site);
+			const bool needed = SiteIsNeeded(*site);
+
 			if (checked.status == SiteStatus::kReady) {
-				logger::info("Hook site {} resolved to {:#x}: {}", site->name, checked.address,
-					StatusName(checked.status));
-			} else {
+				logger::info("Hook site {} resolved to {:#x}: {}{}", site->name, checked.address,
+					StatusName(checked.status), needed ? "" : " (not used by this build yet)");
+			} else if (needed) {
 				logger::error("Hook site {} at {:#x}: {} -- not patching it", site->name,
 					checked.address, StatusName(checked.status));
-			}
-
-			if (checked.status != SiteStatus::kReady) {
 				allReady = false;
-			}
-			if (checked.status == SiteStatus::kSignatureMismatch) {
-				g_signatureMismatch = true;
+				if (checked.status == SiteStatus::kSignatureMismatch) {
+					g_signatureMismatch = true;
+				}
+			} else {
+				logger::warn("Hook site {} at {:#x}: {} -- not used by this build yet, ignoring",
+					site->name, checked.address, StatusName(checked.status));
 			}
 		}
 
@@ -307,6 +283,11 @@ namespace BM::Hooks
 			if (xpSite.status == SiteStatus::kReady) {
 				g_xpGainHookInstalled = InstallXPGainHook(xpSite.address);
 			}
+		}
+
+		if (Config::Get().clampCharXPAbove100) {
+			logger::warn("bClampCharXPAbove100 is set, but the character-XP clamp (FR-11) is not "
+						 "implemented yet, so the setting currently has no effect.");
 		}
 
 		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}",

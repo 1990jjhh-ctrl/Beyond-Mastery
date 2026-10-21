@@ -31,6 +31,17 @@ namespace
 			return;
 		}
 
+		// RE::DebugMessageBox resolves relocations of its own (the message box
+		// menu and the game setting collection), so calling it without an
+		// address library would terminate the process from inside
+		// CommonLibSSE -- the very crash the guard in InstallAll avoids. The
+		// log already carries the detail in that state.
+		if (BM::Hooks::AddressLibraryMissing()) {
+			logger::warn("Not showing the conflict warning: no address library, so no engine call "
+						 "is safe. See the critical entry above.");
+			return;
+		}
+
 		std::string msg = "Beyond Mastery: "s;
 		if (!g_conflicts.empty()) {
 			std::string list;

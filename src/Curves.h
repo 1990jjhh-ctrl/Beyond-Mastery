@@ -60,6 +60,20 @@ namespace BM::Curves
 	// Cap enforcement (FR-2, FR-8)
 	// ---------------------------------------------------------------------
 
+	// Highest cap accepted from a co-save. FR-4 puts no limit on the cap
+	// itself -- the soft cap is cost and the XP curve -- but a value read back
+	// from a save is data we did not write, and it goes straight into the
+	// engine's level comparison, so a corrupt one would let a skill rise
+	// without bound.
+	inline constexpr std::uint16_t kMaxPlausibleCap = 10000;
+
+	// A cap is a multiple of 10, at least the vanilla 100, and within range.
+	// Anything else is damaged data rather than a cap (FR-22).
+	[[nodiscard]] inline bool IsPlausibleCap(std::uint16_t a_cap) noexcept
+	{
+		return a_cap >= 100 && a_cap <= kMaxPlausibleCap && a_cap % 10 == 0;
+	}
+
 	// The level a skill may actually reach: never above its cap.
 	//
 	// A level already past the cap is a real state, not an error: uninstalling

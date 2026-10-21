@@ -205,9 +205,24 @@ static void TestFlatPerkCostAndAffordability()
 	CHECK(Affordable(CostOfNextStep(110), 1, 0, 0));    // mid-tier step: perk only
 }
 
+static void TestPlausibleCap()
+{
+	// A cap read from a co-save is data we did not write, and it now feeds the
+	// engine's level comparison directly, so implausible values must be
+	// rejected rather than enforced.
+	CHECK(IsPlausibleCap(100));
+	CHECK(IsPlausibleCap(110));
+	CHECK(IsPlausibleCap(1000));
+	CHECK(!IsPlausibleCap(0));      // empty / zeroed record
+	CHECK(!IsPlausibleCap(90));     // below the vanilla cap
+	CHECK(!IsPlausibleCap(105));    // not a step boundary
+	CHECK(!IsPlausibleCap(65530));  // garbage that is still a multiple of 10
+}
+
 int main()
 {
 	TestCosts();
+	TestPlausibleCap();
 	TestXPThreshold();
 	TestXPGainMultiplierAcrossLegendary();
 	TestFlatPerkCostAndAffordability();

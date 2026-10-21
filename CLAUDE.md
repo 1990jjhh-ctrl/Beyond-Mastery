@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`BeyondMastery.dll` — an SKSE plugin for Skyrim SE 1.5.97 and AE 1.6.x (no VR, no LE) that lets the player raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems, and continues skill-dependent formulas sub-linearly or asymptotically above 100.
+`BeyondMastery.dll` — an SKSE plugin for Skyrim SE 1.5.97, AE 1.6.x and 1.7.x (no VR, no LE) that lets the player raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems, and continues skill-dependent formulas sub-linearly or asymptotically above 100.
 
 Two documents are the contract for this work and should be read before changing behavior:
 
 - [PRD.md](PRD.md) — approved requirements, numbered `FR-1` … `FR-30`. Code and tests cite these IDs in comments; keep the citations accurate when you change either side.
 - [docs/hook-points.md](docs/hook-points.md) — which engine function each requirement needs, with Address Library IDs, byte offsets and a confidence rating per site.
 
-**Current milestone:** the plugin loads, logs, reads the INI, persists caps in the SKSE co-save and warns about conflicting plugins. **No hooks are installed yet and gameplay is unchanged.** The next step is verifying the hook sites in a disassembler (hook-points.md §9) before writing any hook code.
+**Current milestone:** all nine hook sites are verified against a real `SkyrimSE.exe` — run `scripts/verify_sites.py` to repeat it (hook-points.md §9a). Cap enforcement (FR-2, FR-8) and the XP gain factor (FR-9) are implemented and installed on AE/1.7.x; the XP hook is skipped at the default `fXPGainFactorPerTier` of 1.0, where it would be a no-op. **None of it has run in a game yet** — that needs SKSE64 and the Address Library, neither of which is installed here.
+
+Deliberately not done: cap enforcement on SE 1.5.97 (its patch shape is unconfirmed, so the site is left alone rather than patched on a guess), FR-10's double XP accumulator, FR-11's character-XP clamp, the cap-raise transaction and menu, and all formula scaling. See `docs/superpowers/plans/` and that plan's ledger for the reasoning.
 
 ## Build and test
 
