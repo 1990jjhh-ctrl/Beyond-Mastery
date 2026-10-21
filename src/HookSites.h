@@ -80,6 +80,22 @@ namespace BM::HookSites
 
 	// --- Skill cap and XP (hook-points.md §1-3) ----------------------------
 
+	// Register holding the skill at the patch point, from our disassembly of
+	// 1.7.104 (function entry 0x78dcb0, site 0x78dd1f):
+	//
+	//   mov esi, edx        ; ActorValue arrives in edx and is saved to esi
+	//   lea eax, [rdx-6]
+	//   cmp eax, 0x11       ; engine's own range check: valid AVs are 6..23,
+	//   ja  <bail>          ; exactly the 18 skills in Skills.h
+	//   ... call [rax+0x18] ; <- site: returns the current level in xmm0
+	//
+	// So at the site the ActorValue is in **esi**, and esi is callee-saved, so
+	// it survives the call the patch sits on -- edx would not. The cap value
+	// belongs in xmm10 for AE/1.7.x.
+	//
+	// SE 1.5.97 is NOT established: its pattern shows a different shape
+	// (movss xmm0 then movaps xmm6, so the cap lands in xmm6), and we have no
+	// 1.5.97 binary to disassemble. Do not patch the SE site until it is.
 	inline constexpr Site kGetSkillCap{
 		"GetSkillCap",
 		{ 40554, 0x45 },

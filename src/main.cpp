@@ -66,7 +66,8 @@ namespace
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
-	SKSE::Init(a_skse);
+	// trampolineSize covers the cap stub here and the XP stubs to come.
+	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 256 });
 
 	const auto ver = a_skse->RuntimeVersion();
 	logger::info("Beyond Mastery {} loading on Skyrim {}", SKSE::GetPluginVersion().string(), ver.string());

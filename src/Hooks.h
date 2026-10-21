@@ -31,4 +31,12 @@ namespace BM::Hooks
 	// True when any site checked this session reported kSignatureMismatch, so
 	// the caller can fold it into the single FR-20 warning.
 	[[nodiscard]] bool AnySignatureMismatch() noexcept;
+
+	// Callee of the cap trampoline: the cap for a_av, or the vanilla 100 for
+	// anything that is not a skill. Replaces the constant 100.0 the XP routine
+	// would otherwise load (FR-2, FR-8).
+	float GetSkillCap(RE::ActorValue a_av) noexcept;
+
+	// True once the cap site has actually been patched.
+	[[nodiscard]] bool CapHookInstalled() noexcept;
 }

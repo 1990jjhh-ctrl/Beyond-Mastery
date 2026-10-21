@@ -7,9 +7,36 @@ SKSE plugin for Skyrim SE 1.5.97 and AE 1.6.x: raise each skill's cap above 100 
 
 ## Status
 
-**Milestone 1 (this scaffold):** the plugin loads, writes `BeyondMastery.log`, reads/writes `BeyondMastery.ini`, persists per-skill caps in the SKSE co-save, and warns about conflicting plugins. It does not change gameplay yet.
+Supported runtimes: SE 1.5.97, AE 1.6.x and 1.7.x.
 
-Next: verify the hook sites in Ghidra (hook-points.md §9), then add hooks, the lesser power and the menu.
+Working: the plugin loads, writes `BeyondMastery.log`, reads and writes
+`BeyondMastery.ini`, persists per-skill caps in the SKSE co-save, warns once
+about conflicting plugins, and resolves all nine engine patch sites through the
+Address Library with a byte-signature check before touching anything. All nine
+were verified offline against a real `SkyrimSE.exe` — run
+`scripts/verify_sites.py` to repeat it ([docs/hook-points.md](docs/hook-points.md) §9a).
+
+Cap enforcement is installed on AE and 1.7.x. **It has not yet been exercised
+in a running game**, because that needs SKSE64 and the Address Library for the
+target runtime. Treat it as untested against a save you care about.
+
+Not yet implemented: the cap-raise transaction and its menu (so caps cannot be
+raised in-game yet), formula scaling above 100, and cap enforcement on SE
+1.5.97 — the SE form of that patch site is not yet confirmed, so it is
+deliberately left unpatched rather than patched on a guess. On SE the plugin
+loads, stores caps and says so in the log; skills still stop at 100.
+
+## Uninstalling
+
+Skills already above 100 keep the level they reached — the engine stores skill
+levels as floats, so nothing resets — but they stop progressing once the plugin
+is gone, and nothing above 100 will rise again.
+
+Reinstalling with the co-save intact restores every cap. Reinstalling *without*
+it (a new save, or a co-save that was deleted) puts every cap back to 100 while
+those skills keep their higher levels; they simply sit above their cap and stop
+earning XP until the cap is raised past them again. No resource you already
+spent is refunded.
 
 ## Layout
 

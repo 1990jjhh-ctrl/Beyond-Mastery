@@ -57,6 +57,29 @@ namespace BM::Curves
 	}
 
 	// ---------------------------------------------------------------------
+	// Cap enforcement (FR-2, FR-8)
+	// ---------------------------------------------------------------------
+
+	// The level a skill may actually reach: never above its cap.
+	//
+	// A level already past the cap is a real state, not an error: uninstalling
+	// leaves skills above 100 (the engine stores them as floats) and a lost
+	// co-save puts every cap back to 100 (FR-22, FR-23). Clamp down instead of
+	// treating it as a fault. A negative level is the engine's business, so it
+	// passes through untouched rather than being invented away.
+	[[nodiscard]] inline double ClampLevelToCap(double a_level, std::uint16_t a_cap) noexcept
+	{
+		return std::min(a_level, static_cast<double>(a_cap));
+	}
+
+	// FR-2: a cap may only be raised once the level has reached it. A level
+	// above the cap still counts, so the state above cannot strand a skill.
+	[[nodiscard]] inline bool AtCap(double a_level, std::uint16_t a_cap) noexcept
+	{
+		return a_level >= static_cast<double>(a_cap);
+	}
+
+	// ---------------------------------------------------------------------
 	// Skill XP gain above 100 (FR-9)
 	// ---------------------------------------------------------------------
 

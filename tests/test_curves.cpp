@@ -31,8 +31,8 @@ static int g_failures = 0;
 	do {                                                                                              \
 		const auto _a = (a), _b = (b);                                                                \
 		if (!(_a == _b)) {                                                                            \
-			std::printf("FAIL %s:%d: %s = %lld, expected %lld\n", __FILE__, __LINE__, #a,              \
-				static_cast<long long>(_a), static_cast<long long>(_b));                              \
+			std::printf("FAIL %s:%d: %s = %g, expected %g\n", __FILE__, __LINE__, #a,                 \
+				static_cast<double>(_a), static_cast<double>(_b));                                    \
 			++g_failures;                                                                             \
 		}                                                                                             \
 	} while (0)
@@ -135,9 +135,37 @@ static void TestBarter()
 	CHECK_NEAR(ClampBuyPrice(200, 90, 1.2), 200, 1e-12);
 }
 
+static void TestCapClamp()
+{
+	// Review Focus 2: a level above its cap must clamp, never go negative or wrap.
+	CHECK_EQ(ClampLevelToCap(150.0, 100), 100.0);
+	CHECK_EQ(ClampLevelToCap(100.0, 100), 100.0);
+	CHECK_EQ(ClampLevelToCap(42.0, 100), 42.0);
+	CHECK_EQ(ClampLevelToCap(305.0, 300), 300.0);
+	CHECK_EQ(ClampLevelToCap(0.0, 100), 0.0);
+	CHECK_EQ(ClampLevelToCap(-5.0, 100), -5.0);  // engine's problem, not ours to invent
+
+	CHECK(AtCap(100.0, 100));   // FR-2: a raise needs level == cap
+	CHECK(AtCap(150.0, 100));   // above cap still counts as at cap
+	CHECK(!AtCap(99.0, 100));
+	CHECK(AtCap(300.0, 300));
+	CHECK(!AtCap(299.0, 300));
+}
+
+static void TestVanillaParityAtDefaults()
+{
+	// Review Focus 3: at defaults every hooked value must equal vanilla exactly.
+	CHECK_EQ(ClampLevelToCap(100.0, 100), 100.0);
+	CHECK_EQ(XPGainMultiplier(100.0, 1.0), 1.0);
+	CHECK_EQ(XPGainMultiplier(400.0, 1.0), 1.0);  // f = 1.0 is vanilla at every level
+	CHECK_EQ(SqrtEffectiveSkill(100.0), 100.0);
+}
+
 int main()
 {
 	TestCosts();
+	TestCapClamp();
+	TestVanillaParityAtDefaults();
 	TestXPGain();
 	TestFormA();
 	TestSpellCost();
