@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.1 — Approved** (2026-10-21; v1.1 adds FR-30 enchanting charge cost)
+Status: **v1.2 — Approved** (2026-10-21; v1.2 fixes the perk cost of a step at 1 perk point)
 Date: 2026-10-21
 Owner: Joel Hirsbrunner
 
@@ -49,11 +49,12 @@ Skill effects above 100 must keep rewarding the player but never run away: every
 
 ### 6.2 Cost of step *n* (raising from cap *C* to *C*+10)
 
-With `n = (C − 100) / 10 + 1` and `T = floor(C / 100)`:
+With `T = floor(C / 100)`. The step number `n` identifies a step but is no
+longer an input to its cost:
 
 | Resource | Cost | When |
 |---|---|---|
-| Perk points | `n` | every step |
+| Perk points | `1` | every step |
 | Filled black soul gems | `T − 1` | every step |
 | Dragon souls | `10 × T` | only on the first step of a tier (C = T × 100), per skill |
 
@@ -66,14 +67,19 @@ Cost examples (one skill):
 | Step | Cap | Perks | Gems | Dragon souls |
 |---|---|---|---|---|
 | 1 | 100→110 | 1 | 0 | 10 |
-| 2 | 110→120 | 2 | 0 | 0 |
-| 10 | 190→200 | 10 | 0 | 0 |
-| **Tier 1 total** | 100→200 | **55** | **0** | **10** |
-| 11 | 200→210 | 11 | 1 | 20 |
-| 20 | 290→300 | 20 | 1 | 0 |
-| **Tier 2 total** | 200→300 | **155** | **10** | **20** |
-| 21 | 300→310 | 21 | 2 | 30 |
-| **Tier 3 total** | 300→400 | **255** | **20** | **30** |
+| 2 | 110→120 | 1 | 0 | 0 |
+| 10 | 190→200 | 1 | 0 | 0 |
+| **Tier 1 total** | 100→200 | **10** | **0** | **10** |
+| 11 | 200→210 | 1 | 1 | 20 |
+| 20 | 290→300 | 1 | 1 | 0 |
+| **Tier 2 total** | 200→300 | **10** | **10** | **20** |
+| 21 | 300→310 | 1 | 2 | 30 |
+| **Tier 3 total** | 300→400 | **10** | **20** | **30** |
+
+Rationale: an escalating perk cost made grind the binding constraint and put the
+cost beyond what `PlayerCharacter::perkCount` can even hold (a `uint8`) past step
+255. At a flat 1 perk per step the limiting factors are character level
+progression and the two tier-scaled resources above.
 
 ### 6.3 Leveling above 100
 
@@ -171,7 +177,7 @@ Spell cost skill factor, for comparison:
 ## 8. Success criteria
 
 1. On SE 1.5.97 and the current AE version: a skill at 100 can be raised to 110 with 1 perk + 10 dragon souls, then trains to 110 through use, then stops.
-2. Step 11 (200→210) consumes exactly 11 perks, 1 filled black soul gem, and 20 dragon souls; failure with any missing resource consumes nothing.
+2. Step 11 (200→210) consumes exactly 1 perk point, 1 filled black soul gem, and 20 dragon souls; failure with any missing resource consumes nothing.
 3. Caps survive save/load and Legendary resets.
 4. Character XP from a skill-up at 150 is 1.5× that of a skill-up at 100 (clamp off), and equal to it with clamp on.
 5. No crash or log error across 1 h of play with a typical 200+ plugin load order.
@@ -185,7 +191,7 @@ Spell cost skill factor, for comparison:
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Perk economy: Tier 1 alone costs 55 perks per skill | Cap raises may be rare in practice | Unclamped character XP from skills above 100 feeds perks back; character level-up cost already grows steeply. Revisit after playtesting |
+| Perk cost is flat at 1 per step, so dragon souls and filled black soul gems are the only resource gates | Cap raises may be too cheap once souls and gems are stockpiled | Tier entry still costs 10 × T dragon souls and every step past tier 1 costs T − 1 gems, both content-gated; character level-up cost grows steeply. Revisit after playtesting |
 | Skill-dependent formulas are spread across many engine functions and perk entry points; no central "skill → effect" function | Each formula needs its own hook; missed one = vanilla linear scaling | Explicit formula list (FR-24); per-formula test at 100/101/200 |
 | Some formulas may not read the skill value directly (e.g. via game settings or perk entry points) | Form A/B harder to inject | Identify per formula during reverse engineering; fall back to post-processing the result |
 | Vanilla formulas on UESP may be inaccurate or unverified for some skills | Wrong f₁₀₀ / slope constants | Derive constants from the disassembly, not wiki values |

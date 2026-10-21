@@ -35,7 +35,7 @@ Five failure modes the spec implies but no task's own happy-path tests exercise.
 
 1. **Address Library absent or for the wrong game version.** CommonLibSSE's `IDDB` calls `stl::report_and_fail`, which shows a message box and *terminates the game*. A player missing the Address Library must get a logged refusal and an unhooked-but-loaded plugin, not a crash to desktop. → Task 3.
 2. **Skill level above its cap.** Reinstalling after uninstalling, or a lost co-save, leaves a skill at 150 with the cap back at 100 (FR-22, FR-23). Enforcement must clamp XP gain without corrupting the level or looping. → Task 4.
-3. **Perk cost exceeding what the engine can hold.** `PlayerCharacter::perkCount` is a `uint8` (max 255) while step cost `n` grows without bound (FR-4, §6.2). Around step 256 the cost is unpayable and must be reported as unaffordable, never wrap. → Task 5 (cost side is Plan 2; the clamp arithmetic lives in `Curves.h`).
+3. **Default configuration must be indistinguishable from vanilla.** With every cap at 100 and `fXPGainFactorPerTier` at 1.0, the hooks are installed but must reproduce vanilla values exactly: PRD §3 forbids any change at skill ≤ 100, and success criterion 7 allows only ±0.1% at 100. Drift here is invisible in casual testing and silently affects every existing save. → Tasks 4 and 5.
 4. **Legendary at a raised cap.** The level resets to 15 while the cap stays at e.g. 300 (FR-12, FR-13). XP thresholds and enforcement must behave across that whole 15→300 span, including the tier multiplier at levels below 100. → Task 5.
 5. **Another uncapper already patched the site.** The signature check fails; the plugin must warn exactly once per session and leave the site alone (FR-20, success criterion 6, hook-points.md §8). → Task 3.
 
@@ -418,11 +418,26 @@ static void TestXPGainMultiplierAcrossLegendary()
     CHECK_EQ(XPGainMultiplier(300.0, 1.0), 1.0);    // default f = vanilla everywhere
 }
 
-static void TestPerkCostDoesNotWrap()
+static void TestFlatPerkCostAndAffordability()
 {
-    // Review Focus 3: perkCount is a uint8; cost n grows unbounded.
-    CHECK_EQ(CostOfNextStep(100 + 10 * 254).perks, 255u);
-    CHECK(!Affordable(CostOfNextStep(100 + 10 * 300), /*perks*/ 255, /*gems*/ 99, /*souls*/ 99));
+    // PRD v1.2 §6.2: one perk point per step, whatever the step number.
+    CHECK_EQ(CostOfNextStep(100).perks, 1u);
+    CHECK_EQ(CostOfNextStep(200).perks, 1u);
+    CHECK_EQ(CostOfNextStep(100 + 10 * 300).perks, 1u);
+    // FR-5: every resource is checked before anything is deducted.
+    CHECK(Affordable(CostOfNextStep(200), /*perks*/ 1, /*gems*/ 1, /*souls*/ 20));
+    CHECK(!Affordable(CostOfNextStep(200), 0, 1, 20));   // no perk point
+    CHECK(!Affordable(CostOfNextStep(200), 1, 0, 20));   // no black soul gem
+    CHECK(!Affordable(CostOfNextStep(200), 1, 1, 19));   // one dragon soul short
+}
+
+static void TestVanillaParityAtDefaults()
+{
+    // Review Focus 3: at defaults every hooked value must equal vanilla exactly.
+    CHECK_EQ(ClampLevelToCap(100.0, 100), 100.0);
+    CHECK_EQ(XPGainMultiplier(100.0, 1.0), 1.0);
+    CHECK_EQ(XPGainMultiplier(400.0, 1.0), 1.0);   // f = 1.0 is vanilla at every level
+    CHECK_EQ(SqrtEffectiveSkill(100.0), 100.0);
 }
 ```
 
@@ -430,6 +445,7 @@ static void TestPerkCostDoesNotWrap()
 
 Run: `scripts/test.sh`
 Expected: FAIL — `XPThreshold`, `ThresholdNeedsDouble`, `Affordable` undefined.
+(`TestVanillaParityAtDefaults` passes already; it is a regression guard, not a new feature.)
 
 - [ ] **Step 3: Implement the three functions in `src/Curves.h`**
 
