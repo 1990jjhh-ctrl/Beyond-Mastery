@@ -1,0 +1,26 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "linux-clangcl-release",
+      "displayName": "Release (Linux host, clang-cl cross-compile)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+        "CMAKE_CXX_FLAGS": "/permissive- /EHsc /W4 /bigobj -Wno-overloaded-virtual -Wno-delete-non-abstract-non-virtual-dtor -Wno-inconsistent-missing-override -Wno-reinterpret-base-class -Wno-nonportable-include-path -Wno-deprecated-copy-with-user-provided-copy -Wno-invalid-offsetof -Wno-switch -Wno-unused-command-line-argument -Wno-deprecated-volatile -Wno-unused-private-field -Wno-multichar",
+        "USE_VCPKG": "ON",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-clangcl",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/lib/commonlibsse-ng/examples/linux-cross-compile/custom-triplets",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/lib/commonlibsse-ng/examples/linux-cross-compile/custom-ports",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/lib/commonlibsse-ng/cmake/toolchain-linux-clangcl.cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "linux-clangcl-release" }
+  ]
+}
