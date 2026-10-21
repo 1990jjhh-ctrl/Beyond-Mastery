@@ -41,7 +41,10 @@ set(SOURCES
 	src/PCH.h
 	src/Curves.h
 	src/HookSites.h
+	src/Patterns.h
 	src/Skills.h
+	src/Hooks.h
+	src/Hooks.cpp
 	src/Config.h
 	src/Config.cpp
 	src/State.h

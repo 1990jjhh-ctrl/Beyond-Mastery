@@ -1,5 +1,6 @@
 #include "Config.h"
 #include "HookSites.h"
+#include "Hooks.h"
 #include "State.h"
 
 // Milestone 1: plugin loads on SE and AE, reads the INI, persists caps in
@@ -20,16 +21,28 @@ namespace
 		}
 	}
 
+	// One notification per session covering both signals (FR-20): a known
+	// conflicting plugin, and a patch site whose bytes another plugin already
+	// changed. Two separate message boxes would violate success criterion 6.
 	void NotifyConflicts()
 	{
-		if (g_conflicts.empty() || !BM::Config::Get().warnOnConflict) {
+		const bool mismatch = BM::Hooks::AnySignatureMismatch();
+		if ((g_conflicts.empty() && !mismatch) || !BM::Config::Get().warnOnConflict) {
 			return;
 		}
-		std::string list;
-		for (const auto& n : g_conflicts) {
-			list += list.empty() ? n : ", " + n;
+
+		std::string msg = "Beyond Mastery: "s;
+		if (!g_conflicts.empty()) {
+			std::string list;
+			for (const auto& n : g_conflicts) {
+				list += list.empty() ? n : ", " + n;
+			}
+			msg += std::format("conflicting plugin(s) loaded: {}. ", list);
 		}
-		const auto msg = std::format("Beyond Mastery: conflicting plugin(s) loaded: {}. See BeyondMastery.log.", list);
+		if (mismatch) {
+			msg += "some engine patch sites did not match and were skipped. "sv;
+		}
+		msg += "See BeyondMastery.log."sv;
 		RE::DebugMessageBox(msg.c_str());
 	}
 
@@ -40,6 +53,9 @@ namespace
 			DetectConflicts();
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
+			// Check the sites first so NotifyConflicts can fold a signature
+			// mismatch into the same single warning.
+			BM::Hooks::InstallAll();
 			NotifyConflicts();
 			break;
 		default:
