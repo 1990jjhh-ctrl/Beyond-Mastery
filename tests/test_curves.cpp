@@ -27,15 +27,28 @@ static int g_failures = 0;
 		}                                                                                             \
 	} while (0)
 
+#define CHECK_EQ(a, b)                                                                                \
+	do {                                                                                              \
+		const auto _a = (a), _b = (b);                                                                \
+		if (!(_a == _b)) {                                                                            \
+			std::printf("FAIL %s:%d: %s = %lld, expected %lld\n", __FILE__, __LINE__, #a,              \
+				static_cast<long long>(_a), static_cast<long long>(_b));                              \
+			++g_failures;                                                                             \
+		}                                                                                             \
+	} while (0)
+
 static void TestCosts()
 {
-	// PRD §6.2 example table.
+	// PRD §6.2 example table (v1.2: one perk point per step, whatever the step).
 	CHECK((CostOfNextStep(100) == StepCost{ 1, 0, 10 }));
-	CHECK((CostOfNextStep(110) == StepCost{ 2, 0, 0 }));
-	CHECK((CostOfNextStep(190) == StepCost{ 10, 0, 0 }));
-	CHECK((CostOfNextStep(200) == StepCost{ 11, 1, 20 }));
-	CHECK((CostOfNextStep(290) == StepCost{ 20, 1, 0 }));
-	CHECK((CostOfNextStep(300) == StepCost{ 21, 2, 30 }));
+	CHECK((CostOfNextStep(110) == StepCost{ 1, 0, 0 }));
+	CHECK((CostOfNextStep(190) == StepCost{ 1, 0, 0 }));
+	CHECK((CostOfNextStep(200) == StepCost{ 1, 1, 20 }));
+	CHECK((CostOfNextStep(290) == StepCost{ 1, 1, 0 }));
+	CHECK((CostOfNextStep(300) == StepCost{ 1, 2, 30 }));
+
+	// The perk cost must not grow with the step number, however deep.
+	CHECK_EQ(CostOfNextStep(100 + 10 * 300).perks, 1u);
 
 	auto total = [](std::uint32_t from, std::uint32_t to) {
 		StepCost t;
@@ -47,9 +60,9 @@ static void TestCosts()
 		}
 		return t;
 	};
-	CHECK((total(100, 200) == StepCost{ 55, 0, 10 }));
-	CHECK((total(200, 300) == StepCost{ 155, 10, 20 }));
-	CHECK((total(300, 400) == StepCost{ 255, 20, 30 }));
+	CHECK((total(100, 200) == StepCost{ 10, 0, 10 }));
+	CHECK((total(200, 300) == StepCost{ 10, 10, 20 }));
+	CHECK((total(300, 400) == StepCost{ 10, 20, 30 }));
 }
 
 static void TestXPGain()

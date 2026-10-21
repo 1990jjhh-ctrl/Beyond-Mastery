@@ -40,13 +40,17 @@ namespace BM::Curves
 		friend bool operator==(const StepCost&, const StepCost&) = default;
 	};
 
+	// Perk points charged per step, whatever the step number (PRD v1.2 §6.2).
+	// An escalating cost made grind the binding constraint and overflowed the
+	// engine's uint8 perkCount past step 255; level progression is the gate now.
+	inline constexpr std::uint32_t kPerksPerStep = 1;
+
 	// Cost of raising the cap from a_currentCap (a multiple of 10, >= 100) by +10.
 	[[nodiscard]] inline StepCost CostOfNextStep(std::uint32_t a_currentCap) noexcept
 	{
-		const auto n = StepNumber(a_currentCap);
 		const auto t = Tier(static_cast<double>(a_currentCap));
 		StepCost cost;
-		cost.perks = n;
+		cost.perks = kPerksPerStep;
 		cost.blackSoulGems = t >= 1u ? t - 1u : 0u;
 		cost.dragonSouls = (a_currentCap % 100u == 0u) ? 10u * t : 0u;
 		return cost;
