@@ -42,6 +42,7 @@ set(SOURCES
 	src/Curves.h
 	src/HookSites.h
 	src/Patterns.h
+	src/Stubs.h
 	src/Skills.h
 	src/Hooks.h
 	src/Hooks.cpp
