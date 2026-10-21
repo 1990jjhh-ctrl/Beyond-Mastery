@@ -1,5 +1,7 @@
 #include "Hooks.h"
 
+#include "Config.h"
+#include "Curves.h"
 #include "State.h"
 
 #include <xbyak/xbyak.h>
@@ -14,6 +16,7 @@ namespace BM::Hooks
 		bool g_addressLibraryMissing = false;
 		bool g_signatureMismatch = false;
 		bool g_capHookInstalled = false;
+		bool g_xpGainHookInstalled = false;
 
 		// Bytes from the cap site's start to the `movss xmm10, [rip+..]` that
 		// loads the vanilla 100.0: call [rax+0x18] (3) + movaps xmm8,xmm0 (4).
@@ -95,8 +98,59 @@ namespace BM::Hooks
 			}
 		};
 
+		// Replaces the three instructions that compute the XP to add:
+		//
+		//   movss xmm0, [rsp+0x30]   ; ImproveMult, filled by the call above
+		//   mulss xmm0, xmm6         ; the points argument, saved in the prologue
+		//   addss xmm0, [rsp+0x34]   ; ImproveOffset
+		//
+		// 16 bytes in total, leaving the result in xmm0 exactly as the engine
+		// expects. esi still holds the skill actor value. Our own sub rsp
+		// shifts the two stack operands, hence the +0x38.
+		struct XPGainStub : Xbyak::CodeGenerator
+		{
+			explicit XPGainStub(std::uintptr_t a_callee)
+			{
+				sub(rsp, 0x38);
+				mov(ecx, esi);                              // arg 0: actor value
+				movss(xmm1, ptr[rsp + 0x38 + 0x30]);        // arg 1: ImproveMult
+				movaps(xmm2, xmm6);                         // arg 2: points
+				movss(xmm3, ptr[rsp + 0x38 + 0x34]);        // arg 3: ImproveOffset
+				mov(rax, a_callee);
+				call(rax);                                  // result in xmm0
+				add(rsp, 0x38);
+				ret();
+			}
+		};
+
 		// Writes the 5-byte call and NOPs the 4 bytes of the 9-byte movss that
 		// it does not cover, so no fragment of the old instruction executes.
+		// Length of the three replaced instructions at the XP gain site.
+		constexpr std::size_t kXPGainLength = 16;
+
+		bool InstallXPGainHook(std::uintptr_t a_siteAddress)
+		{
+			XPGainStub code{ reinterpret_cast<std::uintptr_t>(&ImprovePlayerSkillPoints) };
+			code.ready();
+
+			auto& trampoline = SKSE::GetTrampoline();
+			auto* stub = trampoline.allocate(code.getSize());
+			if (stub == nullptr) {
+				logger::error("No trampoline space for the XP gain stub ({} bytes)", code.getSize());
+				return false;
+			}
+			std::memcpy(stub, code.getCode(), code.getSize());
+
+			trampoline.write_call<5>(a_siteAddress, reinterpret_cast<std::uintptr_t>(stub));
+			std::array<std::uint8_t, kXPGainLength - 5> nops{};
+			nops.fill(REL::NOP);
+			REL::safe_write(a_siteAddress + 5, nops.data(), nops.size());
+
+			logger::info("XP gain hook installed at {:#x} (stub {:#x})", a_siteAddress,
+				reinterpret_cast<std::uintptr_t>(stub));
+			return true;
+		}
+
 		bool InstallCapHook(std::uintptr_t a_siteAddress)
 		{
 			const auto target = a_siteAddress + kCapLoadOffset;
@@ -128,6 +182,32 @@ namespace BM::Hooks
 	float GetSkillCap(RE::ActorValue a_av) noexcept
 	{
 		return static_cast<float>(State::Get().CapOf(a_av));
+	}
+
+	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_improveMult, float a_points,
+		float a_improveOffset) noexcept
+	{
+		const float vanilla = a_improveMult * a_points + a_improveOffset;
+		if (!Skills::IsSkill(a_av)) {
+			return vanilla;
+		}
+
+		// The base level, deliberately not the current one: Plan 3 remaps the
+		// current value for the formula scaling, and the tier here must follow
+		// the real level (FR-9).
+		const auto* player = RE::PlayerCharacter::GetSingleton();
+		if (player == nullptr) {
+			return vanilla;
+		}
+		const auto level = player->AsActorValueOwner()->GetBaseActorValue(a_av);
+
+		const auto factor = Curves::XPGainMultiplier(level, Config::Get().xpGainFactorPerTier);
+		return static_cast<float>(vanilla * factor);
+	}
+
+	bool XPGainHookInstalled() noexcept
+	{
+		return g_xpGainHookInstalled;
 	}
 
 	bool CapHookInstalled() noexcept
@@ -211,8 +291,28 @@ namespace BM::Hooks
 			g_capHookInstalled = InstallCapHook(capStatus.address);
 		}
 
-		logger::info("Hook sites checked, {}; cap hook {}", allReady ? "all ready" : "some unavailable",
-			g_capHookInstalled ? "installed" : "not installed");
+		// XP gain factor (FR-9). At the default f = 1.0 the hook would return
+		// exactly the vanilla value, so it is not installed at all: fewer
+		// hooks, fewer conflicts (hook-points.md §2).
+		const auto factor = Config::Get().xpGainFactorPerTier;
+		if (factor >= 1.0) {
+			logger::info("fXPGainFactorPerTier is {}, so the XP gain hook is a no-op and is not "
+						 "installed",
+				factor);
+		} else if (!UseAE()) {
+			logger::warn("The XP gain factor is not yet available on SE 1.5.97: that patch shape "
+						 "is unverified.");
+		} else {
+			const auto xpSite = CheckDetailed(HookSites::kImprovePlayerSkillPoints);
+			if (xpSite.status == SiteStatus::kReady) {
+				g_xpGainHookInstalled = InstallXPGainHook(xpSite.address);
+			}
+		}
+
+		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}",
+			allReady ? "all ready" : "some unavailable",
+			g_capHookInstalled ? "installed" : "not installed",
+			g_xpGainHookInstalled ? "installed" : "not installed");
 		return allReady;
 	}
 }

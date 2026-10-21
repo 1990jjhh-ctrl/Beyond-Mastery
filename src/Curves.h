@@ -95,6 +95,36 @@ namespace BM::Curves
 		return std::pow(f, static_cast<double>(t - 1u));
 	}
 
+	// XP needed to reach the next level of a skill at a_level, the vanilla
+	// formula extended past 100 (FR-9). ImproveMult and ImproveOffset are
+	// per-skill game settings and fSkillUseCurve is global; all three are read
+	// from the game at runtime rather than hardcoded.
+	[[nodiscard]] inline double XPThreshold(double a_level, double a_improveMult,
+		double a_skillUseCurve, double a_improveOffset) noexcept
+	{
+		return a_improveMult * std::pow(a_level, a_skillUseCurve) + a_improveOffset;
+	}
+
+	// Largest integer a float can still represent exactly: 2^24. Past it,
+	// consecutive integers collapse onto the same float, so XP accumulated in
+	// single precision would silently stop advancing (FR-10).
+	inline constexpr double kFloatIntegerLimit = 16777216.0;
+
+	[[nodiscard]] inline bool ThresholdNeedsDouble(double a_threshold) noexcept
+	{
+		return a_threshold > kFloatIntegerLimit;
+	}
+
+	// FR-5: a step is only affordable when every resource is covered. Checked
+	// in full before anything is deducted, so a missing resource costs nothing.
+	[[nodiscard]] inline bool Affordable(const StepCost& a_cost, std::uint32_t a_perks,
+		std::uint32_t a_blackSoulGems, std::uint32_t a_dragonSouls) noexcept
+	{
+		return a_perks >= a_cost.perks &&
+		       a_blackSoulGems >= a_cost.blackSoulGems &&
+		       a_dragonSouls >= a_cost.dragonSouls;
+	}
+
 	// ---------------------------------------------------------------------
 	// Form A: sub-linear effective skill (PRD §6.9 A)
 	// ---------------------------------------------------------------------

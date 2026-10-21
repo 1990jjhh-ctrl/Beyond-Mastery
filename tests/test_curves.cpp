@@ -161,9 +161,56 @@ static void TestVanillaParityAtDefaults()
 	CHECK_EQ(SqrtEffectiveSkill(100.0), 100.0);
 }
 
+static void TestXPThreshold()
+{
+	// FR-9: ImproveMult * level^fSkillUseCurve + ImproveOffset, extended past 100.
+	CHECK_NEAR(XPThreshold(100, 1.0, 1.95, 0.0), std::pow(100.0, 1.95), 1e-6);
+	CHECK_NEAR(XPThreshold(100, 2.0, 1.95, 5.0), 2.0 * std::pow(100.0, 1.95) + 5.0, 1e-6);
+	CHECK(XPThreshold(200, 1.0, 1.95, 0.0) > XPThreshold(100, 1.0, 1.95, 0.0));
+
+	// FR-10: past 2^24 a float can no longer hold consecutive integers, so the
+	// plugin has to track progress as double from there on.
+	CHECK(!ThresholdNeedsDouble(1.0e6));
+	CHECK(ThresholdNeedsDouble(1.7e7));
+	CHECK(!ThresholdNeedsDouble(16777216.0));      // exactly 2^24 is still exact
+	CHECK(ThresholdNeedsDouble(16777217.0));       // the first integer a float loses
+	const double big = 1.7e7;
+	CHECK(static_cast<float>(big) + 1.0f == static_cast<float>(big));  // float loses it
+	CHECK(big + 1.0 != big);                                           // double keeps it
+}
+
+static void TestXPGainMultiplierAcrossLegendary()
+{
+	// Review Focus 4: after Legendary the level is 15 while the cap stays high.
+	CHECK_EQ(XPGainMultiplier(15.0, 0.5), 1.0);   // below 100 -> vanilla
+	CHECK_EQ(XPGainMultiplier(99.0, 0.5), 1.0);
+	CHECK_EQ(XPGainMultiplier(100.0, 0.5), 1.0);  // T=1 -> f^0
+	CHECK_NEAR(XPGainMultiplier(200.0, 0.5), 0.5, 1e-12);
+	CHECK_NEAR(XPGainMultiplier(300.0, 0.5), 0.25, 1e-12);
+	CHECK_EQ(XPGainMultiplier(300.0, 1.0), 1.0);  // default f = vanilla everywhere
+}
+
+static void TestFlatPerkCostAndAffordability()
+{
+	// PRD v1.2 §6.2: one perk point per step, whatever the step number.
+	CHECK_EQ(CostOfNextStep(100).perks, 1u);
+	CHECK_EQ(CostOfNextStep(200).perks, 1u);
+	CHECK_EQ(CostOfNextStep(100 + 10 * 300).perks, 1u);
+	// FR-5: every resource is checked before anything is deducted.
+	CHECK(Affordable(CostOfNextStep(200), 1, 1, 20));
+	CHECK(!Affordable(CostOfNextStep(200), 0, 1, 20));  // no perk point
+	CHECK(!Affordable(CostOfNextStep(200), 1, 0, 20));  // no black soul gem
+	CHECK(!Affordable(CostOfNextStep(200), 1, 1, 19));  // one dragon soul short
+	CHECK(Affordable(CostOfNextStep(200), 9, 9, 99));   // surplus is fine
+	CHECK(Affordable(CostOfNextStep(110), 1, 0, 0));    // mid-tier step: perk only
+}
+
 int main()
 {
 	TestCosts();
+	TestXPThreshold();
+	TestXPGainMultiplierAcrossLegendary();
+	TestFlatPerkCostAndAffordability();
 	TestCapClamp();
 	TestVanillaParityAtDefaults();
 	TestXPGain();
