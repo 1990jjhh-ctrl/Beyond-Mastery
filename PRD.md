@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.2 — Approved** (2026-10-21; v1.2 fixes the perk cost of a step at 1 perk point)
+Status: **v1.3 — Approved** (2026-10-21; v1.3 adds 1.7.x to the target runtimes)
 Date: 2026-10-21
 Owner: Joel Hirsbrunner
 
@@ -26,7 +26,7 @@ Skill effects above 100 must keep rewarding the player but never run away: every
 
 ## 4. Target users & platform
 
-- PC players on Skyrim **SE 1.5.97 and AE 1.6.x**, using SKSE64 and Address Library.
+- PC players on Skyrim **SE 1.5.97**, **AE 1.6.x** and **1.7.x**, using SKSE64 and Address Library.
 - Single DLL via **CommonLibSSE-NG**, plus a small ESP/ESL for the power, messages, and globals.
 
 ## 5. Definitions
@@ -170,8 +170,8 @@ Spell cost skill factor, for comparison:
 
 ## 7. Constraints
 
-- Requires SKSE64, Address Library for SKSE Plugins, and a CommonLibSSE-NG build covering SE 1.5.97 and AE 1.6.x.
-- Hook locations must be resolved through Address Library IDs (no hardcoded offsets).
+- Requires SKSE64, Address Library for SKSE Plugins, and a CommonLibSSE-NG build covering SE 1.5.97, AE 1.6.x and 1.7.x.
+- Hook locations must be resolved through Address Library IDs (no hardcoded offsets). 1.7.x reuses the AE IDs: `REL::RelocationID` selects the AE ID for every runtime at or above 1.6.317, and the AE IDs, byte offsets and instruction patterns were confirmed unchanged on 1.7.104 (docs/hook-points.md §9a).
 - Plugin record count minimal; ESP flagged as ESL if possible.
 
 ## 8. Success criteria

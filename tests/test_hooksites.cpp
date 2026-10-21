@@ -28,20 +28,61 @@ static bool PatternOk(std::string_view a_p)
 	return true;
 }
 
-int main()
+static int g_failures = 0;
+
+#define CHECK(cond)                                                     \
+	do {                                                                \
+		if (!(cond)) {                                                  \
+			std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+			++g_failures;                                               \
+		}                                                               \
+	} while (0)
+
+static void TestPatternsWellFormed()
 {
-	int failures = 0;
 	for (const auto* site : BM::HookSites::kAllSites) {
 		for (auto p : { site->patternSE, site->patternAE }) {
 			if (!PatternOk(p)) {
 				std::printf("FAIL %.*s: bad pattern \"%.*s\"\n",
 					static_cast<int>(site->name.size()), site->name.data(),
 					static_cast<int>(p.size()), p.data());
-				++failures;
+				++g_failures;
 			}
 		}
 	}
-	if (failures == 0)
-		std::printf("All hook-site patterns well-formed (%zu sites).\n", BM::HookSites::kAllSites.size());
-	return failures == 0 ? 0 : 1;
+}
+
+static void TestRuntimeGate()
+{
+	using namespace BM::HookSites;
+	CHECK(IsSupportedRuntime({ 1, 5, 97, 0 }));
+	CHECK(IsSupportedRuntime({ 1, 6, 1170, 0 }));
+	CHECK(IsSupportedRuntime({ 1, 7, 104, 0 }));  // the installed runtime
+	CHECK(!IsSupportedRuntime({ 1, 4, 15, 0 }));  // pre-SE-1.5.97
+	CHECK(!IsSupportedRuntime({ 1, 2, 15, 0 }));  // VR/LE are out of scope (PRD §3)
+	CHECK(!IsSupportedRuntime({ 1, 5, 96, 0 }));  // older SE builds are not targeted
+
+	// kMaxKnownRuntime is the newest build whose sites we verified ourselves;
+	// anything past it still runs, but the plugin says so in the log.
+	CHECK(IsKnownRuntime({ 1, 7, 104, 0 }));
+	CHECK(IsKnownRuntime({ 1, 5, 97, 0 }));
+	CHECK(!IsKnownRuntime({ 1, 8, 0, 0 }));
+}
+
+static void TestEverySiteVerified()
+{
+	// Task 1's scripts/verify_sites.py matched all nine against SkyrimSE.exe
+	// 1.7.104 using the 1.7.99 address library.
+	for (const auto* s : BM::HookSites::kAllSites)
+		CHECK(s->verified);
+}
+
+int main()
+{
+	TestPatternsWellFormed();
+	TestRuntimeGate();
+	TestEverySiteVerified();
+	if (g_failures == 0)
+		std::printf("All hook-site checks passed (%zu sites).\n", BM::HookSites::kAllSites.size());
+	return g_failures == 0 ? 0 : 1;
 }

@@ -1,4 +1,5 @@
 #include "Config.h"
+#include "HookSites.h"
 #include "State.h"
 
 // Milestone 1: plugin loads on SE and AE, reads the INI, persists caps in
@@ -53,6 +54,25 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 
 	const auto ver = a_skse->RuntimeVersion();
 	logger::info("Beyond Mastery {} loading on Skyrim {}", SKSE::GetPluginVersion().string(), ver.string());
+
+	// PRD §4: SE 1.5.97, AE 1.6.x and 1.7.x. On anything older the hook sites
+	// are unknown, so load but stay inert rather than refuse -- returning false
+	// here would take the player's whole session down with us.
+	const BM::HookSites::RuntimeVersion runtime{ ver.major(), ver.minor(), ver.patch(), ver.build() };
+	if (!BM::HookSites::IsSupportedRuntime(runtime)) {
+		logger::critical("Skyrim {} is not a supported runtime (oldest supported is {}.{}.{}). "
+						 "Beyond Mastery will stay inactive.",
+			ver.string(), BM::HookSites::kMinRuntime.major, BM::HookSites::kMinRuntime.minor,
+			BM::HookSites::kMinRuntime.patch);
+		return true;
+	}
+	if (!BM::HookSites::IsKnownRuntime(runtime)) {
+		logger::warn("Skyrim {} is newer than the newest build whose hook sites we verified "
+					 "({}.{}.{}). Addresses come from your address library, but the byte "
+					 "signatures may no longer match; check the log below.",
+			ver.string(), BM::HookSites::kMaxKnownRuntime.major,
+			BM::HookSites::kMaxKnownRuntime.minor, BM::HookSites::kMaxKnownRuntime.patch);
+	}
 
 	BM::Config::Get().Load();
 	BM::State::RegisterSerialization();

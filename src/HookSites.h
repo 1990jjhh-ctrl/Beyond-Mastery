@@ -9,7 +9,18 @@
 //
 // Source: Skyrim AE Uncapper (Rust), commit of 2026-09-07. Only the facts
 // about the game binary are taken (IDs, offsets, instruction bytes), no code.
+//
 // "verified" is set once a site has been confirmed in our own disassembly.
+// All nine were confirmed with scripts/verify_sites.py against SkyrimSE.exe
+// 1.7.104.0 using the 1.7.99 address library: every AE id resolved and the
+// expected bytes were present, eight at a +0x260 drift from the 1.7.99
+// offsets and CapMagickaCDR unmoved. Drift is region-local, so it is noise
+// from the 1.7.99 -> 1.7.104 rebuild, not an error in the table; at runtime
+// the player's own address library supplies the exact offsets.
+//
+// The AE ids, byte offsets and patterns hold unchanged on 1.7.x, so there is
+// no separate 1.7 column: REL::RelocationID picks the AE id for every
+// runtime at or above 1.6.317.
 //
 // Pattern syntax: hex bytes separated by spaces, "??" = any byte.
 
@@ -19,6 +30,38 @@
 
 namespace BM::HookSites
 {
+	// Target runtimes (PRD §4): SE 1.5.97, AE 1.6.x and 1.7.x. Plain aggregate
+	// rather than REL::Version so the gate is unit-tested natively.
+	struct RuntimeVersion
+	{
+		std::uint16_t major{};
+		std::uint16_t minor{};
+		std::uint16_t patch{};
+		std::uint16_t build{};
+
+		friend auto operator<=>(const RuntimeVersion&, const RuntimeVersion&) = default;
+		friend bool operator==(const RuntimeVersion&, const RuntimeVersion&) = default;
+	};
+
+	// Oldest targeted build. Everything below it (VR 1.4.15, LE, older SE
+	// builds) is out of scope per PRD §3.
+	inline constexpr RuntimeVersion kMinRuntime{ 1, 5, 97, 0 };
+
+	// Newest build whose sites we verified ourselves; see the note above.
+	inline constexpr RuntimeVersion kMaxKnownRuntime{ 1, 7, 104, 0 };
+
+	[[nodiscard]] inline bool IsSupportedRuntime(RuntimeVersion a_v) noexcept
+	{
+		return a_v >= kMinRuntime;
+	}
+
+	// A supported runtime newer than anything we verified still gets hooks --
+	// the address library resolves the ids -- but the log says so.
+	[[nodiscard]] inline bool IsKnownRuntime(RuntimeVersion a_v) noexcept
+	{
+		return a_v <= kMaxKnownRuntime;
+	}
+
 	struct Location
 	{
 		std::uint64_t id;
@@ -43,7 +86,7 @@ namespace BM::HookSites
 		{ 41561, 0x6F },
 		"FF 50 18 F3 44 0F 10 05 ?? ?? ?? ?? 0F 28 F0",
 		"FF 50 18 44 0F 28 C0 F3 44 0F 10 15 ?? ?? ?? ??",
-		false
+		true
 	};
 
 	inline constexpr Site kImprovePlayerSkillPoints{
@@ -52,7 +95,7 @@ namespace BM::HookSites
 		{ 41561, 0xF1 },
 		"F3 0F 10 44 24 30 F3 0F 59 C7 F3 0F 58 44 24 34",
 		"F3 0F 10 44 24 30 F3 0F 59 C6 F3 0F 58 44 24 34",
-		false
+		true
 	};
 
 	// Installed only with bClampCharXPAbove100 = true (FR-11).
@@ -62,7 +105,7 @@ namespace BM::HookSites
 		{ 41561, 0x2CB },
 		"F3 0F 5C C1 F3 0F 59 05 ?? ?? ?? ??",
 		"F3 0F 5C CA F3 0F 59 0D ?? ?? ?? ??",
-		false
+		true
 	};
 
 	// --- Effective skill (hook-points.md §5.1, §5.2) -------------------------
@@ -74,7 +117,7 @@ namespace BM::HookSites
 		{ 38462, 0 },
 		"40 55 56 57 41 56 41 57 48 83 EC 40",
 		"4C 8B DC 55 56 57 41 56 41 57 48 83 EC 50",
-		false
+		true
 	};
 
 	// Skills menu list update; remap is bypassed inside it (FR-29).
@@ -84,7 +127,7 @@ namespace BM::HookSites
 		{ 52525, 0 },
 		"48 8B C4 55 53 56 57 41 54 41 55 41 56",
 		"48 8B C4 55 53 56 57 41 54 41 55 41 56",
-		false
+		true
 	};
 
 	// Vanilla clamp of the magic skill to 100 in the spell cost formula.
@@ -95,7 +138,7 @@ namespace BM::HookSites
 		{ 27284, 0x2C },
 		"73 44",
 		"F3 0F 5D 0D ?? ?? ?? ??",
-		false
+		true
 	};
 
 	// --- Enchanting charge cost (hook-points.md §5.3, FR-30) -----------------
@@ -107,7 +150,7 @@ namespace BM::HookSites
 		{ 51449, 0x314 },
 		"48 8B 0D ?? ?? ?? ?? 48 81 C1 ?? 00 00 00 48 8B 01 BA 17 00 00 00 FF 50 08 0F 28 C8 0F 28 C7 E8 ?? ?? ?? ??",
 		"48 8B 0D ?? ?? ?? ?? 48 81 C1 ?? 00 00 00 48 8B 01 BA 17 00 00 00 FF 50 08 0F 28 C8 0F 28 C7 E8 ?? ?? ?? ??",
-		false
+		true
 	};
 
 	inline constexpr Site kBeginMaxChargeCalculation{
@@ -116,7 +159,7 @@ namespace BM::HookSites
 		{ 51449, 0xE9 },
 		"F3 0F 11 84 24 C0 00 00 00 48 85 C9",
 		"F3 0F 11 84 24 A0 00 00 00 48 85 C9",
-		false
+		true
 	};
 
 	inline constexpr Site kEndMaxChargeCalculation{
@@ -125,7 +168,7 @@ namespace BM::HookSites
 		{ 51449, 0x179 },
 		"F3 0F 10 84 24 C0 00 00 00 41 0F 2F C0 77 04 41 0F 28 C0",
 		"F3 0F 10 84 24 A0 00 00 00 F3 41 0F 5F C1",
-		false
+		true
 	};
 
 	// --- Barter (hook-points.md §6) ------------------------------------------

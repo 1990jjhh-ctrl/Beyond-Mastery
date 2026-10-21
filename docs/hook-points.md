@@ -15,7 +15,7 @@ Scope: maps every PRD requirement that needs engine access to a concrete hook or
 
 - `AE id+off` / `SE id+off`: Address Library ID plus byte offset into that function.
 - Every patch site is guarded by a **byte-signature check** before writing. On mismatch the patch is skipped and logged, never written blind.
-- Confidence: **H** = used in a maintained, released mod for both runtimes. **M** = reasoned from reference code, not yet seen in the binary. **L** = unknown, requires reverse engineering.
+- Confidence: **H** = used in a maintained, released mod for both runtimes. **M** = reasoned from reference code, not yet seen in the binary. **L** = unknown, requires reverse engineering. Every site in §1–§5 has additionally been confirmed in our own disassembly of 1.7.104 (§9a), which is what sets `verified` in `src/HookSites.h`.
 
 ## 1. Skill cap (FR-1 … FR-4)
 
@@ -130,6 +130,44 @@ Detect other SKSE plugins at load (`SKSE::PluginInfo` via the SKSE interface, or
 1. Ghidra on SE 1.5.97 and current AE `SkyrimSE.exe`, with Address Library IDs imported. Confirm every site in §1–5 matches the signatures.
 2. Locate the barter price function (§6).
 3. Read the actual constants of the spell cost and charge formulas from the GMSTs.
+
+## 9a. Verification results (1.7.104)
+
+`scripts/verify_sites.py` resolves each Address Library ID and byte-compares the
+expected instructions in the real binary. Run against
+`SkyrimSE.exe 1.7.104.0` with the `versionlib-1-7-99-0.bin` database shipped as
+a CommonLibSSE test fixture:
+
+| Site | AE id + off | Address in 1.7.104 | Drift vs 1.7.99 | Result |
+|---|---|---|---|---|
+| GetSkillCap | 41561 + 0x6F | 0x78dd1f | +0x260 | match |
+| ImprovePlayerSkillPoints | 41561 + 0xF1 | 0x78dda1 | +0x260 | match |
+| ImproveLevelExpBySkillLevel | 41561 + 0x2CB | 0x78df7b | +0x260 | match |
+| PlayerAVOGetCurrent | 38462 + 0 | 0x6c4cb0 | +0x260 | match |
+| UpdateSkillList | 52525 + 0 | 0x979790 | +0x260 | match |
+| CapMagickaCDR | 27284 + 0x2C | 0x4471ac | 0 | match |
+| CalculateChargePointsPerUse | 51449 + 0x314 | 0x9275e4 | +0x260 | match |
+| BeginMaxChargeCalculation | 51449 + 0xE9 | 0x9273b9 | +0x260 | match |
+| EndMaxChargeCalculation | 51449 + 0x179 | 0x927449 | +0x260 | match |
+
+Drift is **region-local**, not a single global shift: the two functions holding
+eight of the sites moved by 0x260 between 1.7.99 and 1.7.104 while the spell
+cost function did not move at all. The drift is an artefact of comparing against
+a neighbouring database — at runtime the player's own address library gives the
+exact offsets — so it is evidence that the ids and offsets are right, not a
+correction to apply.
+
+Semantics confirmed by disassembly, not just byte equality:
+
+- **GetSkillCap** is `call [rax+0x18]` (current skill level) → `movss xmm10, [rip+..]`
+  → `comiss xmm0, xmm10` → `jae <skip XP gain>`. The constant at `0x141b5bf14`
+  reads exactly **100.0**, and it is shared with the spell cost clamp. Replacing
+  that load with the per-skill cap is the whole cap mechanic (FR-1 … FR-4).
+- **CalculateChargePointsPerUse** loads `edx = 0x17` — `ActorValue::kEnchanting` —
+  before the virtual `GetActorValue` call, then calls the charge computation,
+  confirming the call site identified in §5.3.
+
+Still outstanding from §9: the barter price function (§6) remains unlocated.
 
 ## 10. License
 
