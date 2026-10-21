@@ -1,0 +1,164 @@
+#pragma once
+
+// Single source of truth for engine addresses (docs/hook-points.md).
+//
+// Every entry is an Address Library ID plus byte offset for SE 1.5.97 and
+// AE 1.6.x, and the instruction bytes expected at the patch site. The hook
+// installer compares the bytes before writing and skips the patch on
+// mismatch (FR-20: a mismatch usually means another plugin patched the site).
+//
+// Source: Skyrim AE Uncapper (Rust), commit of 2026-09-07. Only the facts
+// about the game binary are taken (IDs, offsets, instruction bytes), no code.
+// "verified" is set once a site has been confirmed in our own disassembly.
+//
+// Pattern syntax: hex bytes separated by spaces, "??" = any byte.
+
+#include <array>
+#include <cstdint>
+#include <string_view>
+
+namespace BM::HookSites
+{
+	struct Location
+	{
+		std::uint64_t id;
+		std::uint32_t offset;
+	};
+
+	struct Site
+	{
+		std::string_view name;
+		Location         se;
+		Location         ae;
+		std::string_view patternSE;  // empty = whole-function hook, no byte check here
+		std::string_view patternAE;
+		bool             verified;
+	};
+
+	// --- Skill cap and XP (hook-points.md §1-3) ----------------------------
+
+	inline constexpr Site kGetSkillCap{
+		"GetSkillCap",
+		{ 40554, 0x45 },
+		{ 41561, 0x6F },
+		"FF 50 18 F3 44 0F 10 05 ?? ?? ?? ?? 0F 28 F0",
+		"FF 50 18 44 0F 28 C0 F3 44 0F 10 15 ?? ?? ?? ??",
+		false
+	};
+
+	inline constexpr Site kImprovePlayerSkillPoints{
+		"ImprovePlayerSkillPoints",
+		{ 40554, 0xDC },
+		{ 41561, 0xF1 },
+		"F3 0F 10 44 24 30 F3 0F 59 C7 F3 0F 58 44 24 34",
+		"F3 0F 10 44 24 30 F3 0F 59 C6 F3 0F 58 44 24 34",
+		false
+	};
+
+	// Installed only with bClampCharXPAbove100 = true (FR-11).
+	inline constexpr Site kImproveLevelExpBySkillLevel{
+		"ImproveLevelExpBySkillLevel",
+		{ 40576, 0x70 },
+		{ 41561, 0x2CB },
+		"F3 0F 5C C1 F3 0F 59 05 ?? ?? ?? ??",
+		"F3 0F 5C CA F3 0F 59 0D ?? ?? ?? ??",
+		false
+	};
+
+	// --- Effective skill (hook-points.md §5.1, §5.2) -------------------------
+
+	// Whole-function hook on the player's ActorValueOwner::GetActorValue.
+	inline constexpr Site kPlayerAVOGetCurrent{
+		"PlayerAVOGetCurrent",
+		{ 37517, 0 },
+		{ 38462, 0 },
+		"40 55 56 57 41 56 41 57 48 83 EC 40",
+		"4C 8B DC 55 56 57 41 56 41 57 48 83 EC 50",
+		false
+	};
+
+	// Skills menu list update; remap is bypassed inside it (FR-29).
+	inline constexpr Site kUpdateSkillList{
+		"UpdateSkillList",
+		{ 51652, 0 },
+		{ 52525, 0 },
+		"48 8B C4 55 53 56 57 41 54 41 55 41 56",
+		"48 8B C4 55 53 56 57 41 54 41 55 41 56",
+		false
+	};
+
+	// Vanilla clamp of the magic skill to 100 in the spell cost formula.
+	// SE: "jae <end>", AE: "minss xmm1, [100.0]".
+	inline constexpr Site kCapMagickaCDR{
+		"CapMagickaCDR",
+		{ 26616, 0x34 },
+		{ 27284, 0x2C },
+		"73 44",
+		"F3 0F 5D 0D ?? ?? ?? ??",
+		false
+	};
+
+	// --- Enchanting charge cost (hook-points.md §5.3, FR-30) -----------------
+
+	// Two bytes in the original pattern vary (B0 or B8); stored as "??".
+	inline constexpr Site kCalculateChargePointsPerUse{
+		"CalculateChargePointsPerUse",
+		{ 50557, 0x344 },
+		{ 51449, 0x314 },
+		"48 8B 0D ?? ?? ?? ?? 48 81 C1 ?? 00 00 00 48 8B 01 BA 17 00 00 00 FF 50 08 0F 28 C8 0F 28 C7 E8 ?? ?? ?? ??",
+		"48 8B 0D ?? ?? ?? ?? 48 81 C1 ?? 00 00 00 48 8B 01 BA 17 00 00 00 FF 50 08 0F 28 C8 0F 28 C7 E8 ?? ?? ?? ??",
+		false
+	};
+
+	inline constexpr Site kBeginMaxChargeCalculation{
+		"BeginMaxChargeCalculation",
+		{ 50557, 0xE8 },
+		{ 51449, 0xE9 },
+		"F3 0F 11 84 24 C0 00 00 00 48 85 C9",
+		"F3 0F 11 84 24 A0 00 00 00 48 85 C9",
+		false
+	};
+
+	inline constexpr Site kEndMaxChargeCalculation{
+		"EndMaxChargeCalculation",
+		{ 50557, 0x207 },
+		{ 51449, 0x179 },
+		"F3 0F 10 84 24 C0 00 00 00 41 0F 2F C0 77 04 41 0F 28 C0",
+		"F3 0F 10 84 24 A0 00 00 00 F3 41 0F 5F C1",
+		false
+	};
+
+	// --- Barter (hook-points.md §6) ------------------------------------------
+	// Not located yet. Find via cross-references to fBarterMin / fBarterMax.
+
+	inline constexpr std::array kAllSites{
+		&kGetSkillCap,
+		&kImprovePlayerSkillPoints,
+		&kImproveLevelExpBySkillLevel,
+		&kPlayerAVOGetCurrent,
+		&kUpdateSkillList,
+		&kCapMagickaCDR,
+		&kCalculateChargePointsPerUse,
+		&kBeginMaxChargeCalculation,
+		&kEndMaxChargeCalculation,
+	};
+
+	// --- Game settings and functions (no patching) ---------------------------
+
+	struct Object
+	{
+		std::string_view name;
+		std::uint64_t    se;
+		std::uint64_t    ae;
+	};
+
+	inline constexpr Object kEnchantingSkillCostBase{ "fEnchantingSkillCostBase", 506021, 375771 };
+	inline constexpr Object kEnchantingSkillCostMult{ "fEnchantingSkillCostMult", 506023, 375774 };
+	inline constexpr Object kEnchantingSkillCostScale{ "fEnchantingSkillCostScale", 506025, 375777 };
+	inline constexpr Object kEnchantingCostExponent{ "fEnchantingCostExponent", 506027, 375780 };
+	inline constexpr Object kXPPerSkillRank{ "fXPPerSkillRank", 505484, 374914 };
+	inline constexpr Object kLegendarySkillResetValue{ "fLegendarySkillResetValue", 507065, 377771 };
+	inline constexpr Object kPlayerAVOGetBase{ "PlayerAVOGetBase", 37519, 38464 };
+	inline constexpr Object kPlayerAVOModBase{ "PlayerAVOModBase", 37521, 38466 };
+	inline constexpr Object kPlayerAVOModCurrent{ "PlayerAVOModCurrent", 37522, 38467 };
+}
