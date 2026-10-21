@@ -281,6 +281,20 @@ class PEFile:
         return self.data[self.text.rawptr : self.text.rawptr + self.text.rawsize]
 
 
+def pe_file_version(pe: PEFile) -> tuple[int, int, int, int] | None:
+    """The image's FileVersion, from the first VS_FIXEDFILEINFO in the file.
+
+    Used to tell whether a database is for this exact build: a matching one
+    must resolve every site at drift 0, while a neighbouring one legitimately
+    drifts.
+    """
+    i = pe.data.find(b"\xbd\x04\xef\xfe")  # dwSignature, little-endian
+    if i < 0:
+        return None
+    ms, ls = struct.unpack_from("<II", pe.data, i + 8)
+    return (ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF)
+
+
 # --------------------------------------------------------------------------
 # Checking
 # --------------------------------------------------------------------------
@@ -363,10 +377,15 @@ def main(argv=None) -> int:
     fmt, version, db = load_db(args.db)
     sites = parse_sites(args.header)
 
-    print(f"exe      {args.exe}")
+    exe_version = pe_file_version(pe)
+    exact = exe_version is not None and tuple(exe_version) == tuple(version)
+    print(f"exe      {args.exe}"
+          + (f"  (version {'.'.join(map(str, exe_version))})" if exe_version else ""))
     print(f"database {args.db}  (format {fmt}, version {'.'.join(map(str, version))}, "
           f"{len(db)} ids)")
-    print(f"runtime  {args.runtime}      sites {len(sites)}")
+    print(f"runtime  {args.runtime}      sites {len(sites)}      "
+          + ("exact database: every site must match at drift 0"
+             if exact else "NEIGHBOURING database: drift is expected"))
     print()
     print(f"{'site':<30} {'address':>12} {'drift':>8}  result")
     print("-" * 78)

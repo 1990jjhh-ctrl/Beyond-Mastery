@@ -99,6 +99,48 @@ class TestSiteTableParsing(unittest.TestCase):
         self.assertEqual(len(vs.pattern_bytes(g.pattern_ae)), 16)
 
 
+ADDRESS_LIBRARY = pathlib.Path(
+    os.environ.get(
+        "ADDRESS_LIBRARY",
+        "/work/Games/steamapps/common/Skyrim Special Edition/Data/SKSE/Plugins/"
+        "versionlib-1-7-104-0.bin",
+    )
+)
+
+
+@unittest.skipUnless(
+    SKYRIM_EXE.is_file() and ADDRESS_LIBRARY.is_file(),
+    "need both the game binary and its own address library",
+)
+class TestAgainstExactAddressLibrary(unittest.TestCase):
+    """The strongest form of the check: the database for this exact build.
+
+    With a matching database every site must resolve to precisely the address
+    whose bytes the table expects, so drift must be zero. A non-zero drift here
+    would mean an ID or an offset in HookSites.h is wrong -- unlike the
+    neighbouring-database run, where drift is expected noise.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pe = vs.PEFile(SKYRIM_EXE)
+        _, cls.version, cls.db = vs.load_db(ADDRESS_LIBRARY)
+        cls.sites = vs.parse_sites(ROOT / "src" / "HookSites.h")
+
+    def test_database_matches_the_installed_binary(self):
+        # If this fails the zero-drift assertion below is meaningless, so it is
+        # asserted outright rather than guarded.
+        self.assertEqual(tuple(self.version), vs.pe_file_version(self.pe))
+
+    def test_every_site_matches_at_zero_drift(self):
+        problems = []
+        for site in self.sites:
+            r = vs.check_site(self.pe, self.db, site, "ae")
+            if not r.ok or r.drift != 0:
+                problems.append(f"{site.name}: ok={r.ok} drift={r.drift} {r.note}")
+        self.assertEqual(problems, [])
+
+
 @unittest.skipUnless(SKYRIM_EXE.is_file(), f"game binary not present at {SKYRIM_EXE}")
 class TestAgainstRealBinary(unittest.TestCase):
     @classmethod

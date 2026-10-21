@@ -144,9 +144,26 @@ Detect other SKSE plugins at load (`SKSE::PluginInfo` via the SKSE interface, or
 ## 9a. Verification results (1.7.104)
 
 `scripts/verify_sites.py` resolves each Address Library ID and byte-compares the
-expected instructions in the real binary. Run against
-`SkyrimSE.exe 1.7.104.0` with the `versionlib-1-7-99-0.bin` database shipped as
-a CommonLibSSE test fixture:
+expected instructions in the real binary.
+
+**Exact run.** Against `SkyrimSE.exe 1.7.104.0` with its own
+`versionlib-1-7-104-0.bin` (Address Library All in One v13), **all nine sites
+match at drift 0** — every ID resolves to exactly the address whose bytes the
+table expects:
+
+```
+GetSkillCap                  0x78dd1f   ImprovePlayerSkillPoints     0x78dda1
+ImproveLevelExpBySkillLevel  0x78df7b   PlayerAVOGetCurrent          0x6c4cb0
+UpdateSkillList              0x979790   CapMagickaCDR                0x4471ac
+CalculateChargePointsPerUse  0x9275e4   BeginMaxChargeCalculation    0x9273b9
+EndMaxChargeCalculation      0x927449
+```
+
+**Corroborating run.** The same check against the `versionlib-1-7-99-0.bin`
+database shipped as a CommonLibSSE test fixture reaches the identical nine
+addresses via a per-region drift, which is why the table below is kept: it was
+how the sites were first established, before an exact database was available,
+and it is the procedure to repeat on a runtime no database covers yet.
 
 | Site | AE id + off | Address in 1.7.104 | Drift vs 1.7.99 | Result |
 |---|---|---|---|---|
