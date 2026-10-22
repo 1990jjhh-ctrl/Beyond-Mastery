@@ -12,7 +12,6 @@ namespace BM
 	public:
 		static constexpr std::uint16_t kDefaultCap = 100;
 
-
 		static State& Get() noexcept;
 
 		[[nodiscard]] std::uint16_t Cap(std::size_t a_skill) const noexcept { return _caps[a_skill]; }
@@ -23,7 +22,7 @@ namespace BM
 		{
 			return Skills::IsSkill(a_av) ? _caps[Skills::ToIndex(a_av)] : kDefaultCap;
 		}
-		void                        SetCap(std::size_t a_skill, std::uint16_t a_cap) noexcept { _caps[a_skill] = a_cap; }
+		void SetCap(std::size_t a_skill, std::uint16_t a_cap) noexcept { _caps[a_skill] = a_cap; }
 
 		void Reset() noexcept { _caps.fill(kDefaultCap); }
 

@@ -45,8 +45,9 @@ namespace
 		// CommonLibSSE -- the very crash the guard in InstallAll avoids. The
 		// log already carries the detail in that state.
 		if (BM::Hooks::AddressLibraryMissing()) {
-			logger::warn("Not showing the conflict warning: no address library, so no engine call "
-						 "is safe. See the critical entry above.");
+			logger::warn(
+				"Not showing the conflict warning: no address library, so no engine call "
+				"is safe. See the critical entry above.");
 			return;
 		}
 
@@ -97,16 +98,18 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	// here would take the player's whole session down with us.
 	const BM::HookSites::RuntimeVersion runtime{ ver.major(), ver.minor(), ver.patch(), ver.build() };
 	if (!BM::HookSites::IsSupportedRuntime(runtime)) {
-		logger::critical("Skyrim {} is not a supported runtime (oldest supported is {}.{}.{}). "
-						 "Beyond Mastery will stay inactive.",
+		logger::critical(
+			"Skyrim {} is not a supported runtime (oldest supported is {}.{}.{}). "
+			"Beyond Mastery will stay inactive.",
 			ver.string(), BM::HookSites::kMinRuntime.major, BM::HookSites::kMinRuntime.minor,
 			BM::HookSites::kMinRuntime.patch);
 		return true;
 	}
 	if (!BM::HookSites::IsKnownRuntime(runtime)) {
-		logger::warn("Skyrim {} is newer than the newest build whose hook sites we verified "
-					 "({}.{}.{}). Addresses come from your address library, but the byte "
-					 "signatures may no longer match; check the log below.",
+		logger::warn(
+			"Skyrim {} is newer than the newest build whose hook sites we verified "
+			"({}.{}.{}). Addresses come from your address library, but the byte "
+			"signatures may no longer match; check the log below.",
 			ver.string(), BM::HookSites::kMaxKnownRuntime.major,
 			BM::HookSites::kMaxKnownRuntime.minor, BM::HookSites::kMaxKnownRuntime.patch);
 	}

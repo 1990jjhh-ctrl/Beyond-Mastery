@@ -6,7 +6,6 @@
 #include "State.h"
 #include "Stubs.h"
 
-
 #include <filesystem>
 #include <format>
 
@@ -19,7 +18,6 @@ namespace BM::Hooks
 		bool g_capHookInstalled = false;
 		bool g_xpGainHookInstalled = false;
 
-
 		// REL::Module classifies a runtime by minor version: 4 = VR, 5 = SE,
 		// 6 and above = AE. So 1.7.x takes the AE path throughout -- the AE
 		// column of the site table and the versionlib-*.bin file name.
@@ -29,8 +27,8 @@ namespace BM::Hooks
 		{
 			const auto version = REL::Module::get().version();
 			return UseAE() ?
-					   std::format("Data/SKSE/Plugins/versionlib-{}.bin", version.string()) :
-					   std::format("Data/SKSE/Plugins/version-{}.bin", version.string());
+			           std::format("Data/SKSE/Plugins/versionlib-{}.bin", version.string()) :
+			           std::format("Data/SKSE/Plugins/version-{}.bin", version.string());
 		}
 
 		// Sites this milestone actually patches. The other seven are resolved
@@ -41,7 +39,7 @@ namespace BM::Hooks
 
 		struct Checked
 		{
-			SiteStatus    status{ SiteStatus::kUnresolved };
+			SiteStatus     status{ SiteStatus::kUnresolved };
 			std::uintptr_t address{ 0 };
 		};
 
@@ -60,9 +58,9 @@ namespace BM::Hooks
 				return {};
 			}
 
-			const auto offset = UseAE() ? a_site.ae.offset : a_site.se.offset;
-			const auto pattern = UseAE() ? a_site.patternAE : a_site.patternSE;
-			const auto address = base + offset;
+			const auto  offset = UseAE() ? a_site.ae.offset : a_site.se.offset;
+			const auto  pattern = UseAE() ? a_site.patternAE : a_site.patternSE;
+			const auto  address = base + offset;
 			const auto* at = reinterpret_cast<const std::uint8_t*>(address);
 			return { Patterns::Matches(pattern, at) ? SiteStatus::kReady : SiteStatus::kSignatureMismatch,
 				address };
@@ -260,9 +258,10 @@ namespace BM::Hooks
 		// a guess -- see the note on kGetSkillCap in HookSites.h.
 		const auto capStatus = CheckDetailed(HookSites::kGetSkillCap);
 		if (!UseAE()) {
-			logger::warn("Cap enforcement is not yet available on SE 1.5.97: the patch shape for "
-						 "this runtime is unverified. Caps are stored and persist, but skills "
-						 "still stop at 100.");
+			logger::warn(
+				"Cap enforcement is not yet available on SE 1.5.97: the patch shape for "
+				"this runtime is unverified. Caps are stored and persist, but skills "
+				"still stop at 100.");
 		} else if (capStatus.status == SiteStatus::kReady) {
 			g_capHookInstalled = InstallCapHook(capStatus.address);
 		}
@@ -272,12 +271,14 @@ namespace BM::Hooks
 		// hooks, fewer conflicts (hook-points.md §2).
 		const auto factor = Config::Get().xpGainFactorPerTier;
 		if (factor >= 1.0) {
-			logger::info("fXPGainFactorPerTier is {}, so the XP gain hook is a no-op and is not "
-						 "installed",
+			logger::info(
+				"fXPGainFactorPerTier is {}, so the XP gain hook is a no-op and is not "
+				"installed",
 				factor);
 		} else if (!UseAE()) {
-			logger::warn("The XP gain factor is not yet available on SE 1.5.97: that patch shape "
-						 "is unverified.");
+			logger::warn(
+				"The XP gain factor is not yet available on SE 1.5.97: that patch shape "
+				"is unverified.");
 		} else {
 			const auto xpSite = CheckDetailed(HookSites::kImprovePlayerSkillPoints);
 			if (xpSite.status == SiteStatus::kReady) {
@@ -286,8 +287,9 @@ namespace BM::Hooks
 		}
 
 		if (Config::Get().clampCharXPAbove100) {
-			logger::warn("bClampCharXPAbove100 is set, but the character-XP clamp (FR-11) is not "
-						 "implemented yet, so the setting currently has no effect.");
+			logger::warn(
+				"bClampCharXPAbove100 is set, but the character-XP clamp (FR-11) is not "
+				"implemented yet, so the setting currently has no effect.");
 		}
 
 		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}",

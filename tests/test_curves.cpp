@@ -10,31 +10,31 @@ using namespace BM::Curves;
 
 static int g_failures = 0;
 
-#define CHECK(cond)                                                       \
-	do {                                                                  \
-		if (!(cond)) {                                                    \
-			std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);   \
-			++g_failures;                                                 \
-		}                                                                 \
+#define CHECK(cond)                                                     \
+	do {                                                                \
+		if (!(cond)) {                                                  \
+			std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+			++g_failures;                                               \
+		}                                                               \
 	} while (0)
 
-#define CHECK_NEAR(a, b, tol)                                                                         \
-	do {                                                                                              \
-		const double _a = (a), _b = (b);                                                              \
-		if (std::abs(_a - _b) > (tol)) {                                                              \
-			std::printf("FAIL %s:%d: %s = %.6f, expected %.6f\n", __FILE__, __LINE__, #a, _a, _b);   \
-			++g_failures;                                                                             \
-		}                                                                                             \
+#define CHECK_NEAR(a, b, tol)                                                                      \
+	do {                                                                                           \
+		const double _a = (a), _b = (b);                                                           \
+		if (std::abs(_a - _b) > (tol)) {                                                           \
+			std::printf("FAIL %s:%d: %s = %.6f, expected %.6f\n", __FILE__, __LINE__, #a, _a, _b); \
+			++g_failures;                                                                          \
+		}                                                                                          \
 	} while (0)
 
-#define CHECK_EQ(a, b)                                                                                \
-	do {                                                                                              \
-		const auto _a = (a), _b = (b);                                                                \
-		if (!(_a == _b)) {                                                                            \
-			std::printf("FAIL %s:%d: %s = %g, expected %g\n", __FILE__, __LINE__, #a,                 \
-				static_cast<double>(_a), static_cast<double>(_b));                                    \
-			++g_failures;                                                                             \
-		}                                                                                             \
+#define CHECK_EQ(a, b)                                                                \
+	do {                                                                              \
+		const auto _a = (a), _b = (b);                                                \
+		if (!(_a == _b)) {                                                            \
+			std::printf("FAIL %s:%d: %s = %g, expected %g\n", __FILE__, __LINE__, #a, \
+				static_cast<double>(_a), static_cast<double>(_b));                    \
+			++g_failures;                                                             \
+		}                                                                             \
 	} while (0)
 
 static void TestCosts()
@@ -109,7 +109,7 @@ static void TestSpellCost()
 
 static void TestEnchantCharge()
 {
-	const auto f = EnchantChargeFormula();
+	const auto   f = EnchantChargeFormula();
 	const double at100 = f.Vanilla(100);
 	CHECK_NEAR(at100, 0.29289, 1e-5);
 	CHECK_NEAR(f.Vanilla(200), 0.0, 1e-12);  // vanilla breaks here
@@ -145,8 +145,8 @@ static void TestCapClamp()
 	CHECK_EQ(ClampLevelToCap(0.0, 100), 0.0);
 	CHECK_EQ(ClampLevelToCap(-5.0, 100), -5.0);  // engine's problem, not ours to invent
 
-	CHECK(AtCap(100.0, 100));   // FR-2: a raise needs level == cap
-	CHECK(AtCap(150.0, 100));   // above cap still counts as at cap
+	CHECK(AtCap(100.0, 100));  // FR-2: a raise needs level == cap
+	CHECK(AtCap(150.0, 100));  // above cap still counts as at cap
 	CHECK(!AtCap(99.0, 100));
 	CHECK(AtCap(300.0, 300));
 	CHECK(!AtCap(299.0, 300));
@@ -172,8 +172,8 @@ static void TestXPThreshold()
 	// plugin has to track progress as double from there on.
 	CHECK(!ThresholdNeedsDouble(1.0e6));
 	CHECK(ThresholdNeedsDouble(1.7e7));
-	CHECK(!ThresholdNeedsDouble(16777216.0));      // exactly 2^24 is still exact
-	CHECK(ThresholdNeedsDouble(16777217.0));       // the first integer a float loses
+	CHECK(!ThresholdNeedsDouble(16777216.0));  // exactly 2^24 is still exact
+	CHECK(ThresholdNeedsDouble(16777217.0));   // the first integer a float loses
 	const double big = 1.7e7;
 	CHECK(static_cast<float>(big) + 1.0f == static_cast<float>(big));  // float loses it
 	CHECK(big + 1.0 != big);                                           // double keeps it
@@ -182,7 +182,7 @@ static void TestXPThreshold()
 static void TestXPGainMultiplierAcrossLegendary()
 {
 	// Review Focus 4: after Legendary the level is 15 while the cap stays high.
-	CHECK_EQ(XPGainMultiplier(15.0, 0.5), 1.0);   // below 100 -> vanilla
+	CHECK_EQ(XPGainMultiplier(15.0, 0.5), 1.0);  // below 100 -> vanilla
 	CHECK_EQ(XPGainMultiplier(99.0, 0.5), 1.0);
 	CHECK_EQ(XPGainMultiplier(100.0, 0.5), 1.0);  // T=1 -> f^0
 	CHECK_NEAR(XPGainMultiplier(200.0, 0.5), 0.5, 1e-12);

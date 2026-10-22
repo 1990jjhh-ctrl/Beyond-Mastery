@@ -23,15 +23,15 @@ static int g_failures = 0;
 		}                                                               \
 	} while (0)
 
-#define CHECK_EQ(a, b)                                                                   \
-	do {                                                                                 \
-		const auto _a = (a), _b = (b);                                                   \
-		if (!(_a == _b)) {                                                               \
-			std::printf("FAIL %s:%d: %s = %#llx, expected %#llx\n", __FILE__, __LINE__,  \
-				#a, static_cast<unsigned long long>(_a),                                 \
-				static_cast<unsigned long long>(_b));                                    \
-			++g_failures;                                                                \
-		}                                                                                \
+#define CHECK_EQ(a, b)                                                                  \
+	do {                                                                                \
+		const auto _a = (a), _b = (b);                                                  \
+		if (!(_a == _b)) {                                                              \
+			std::printf("FAIL %s:%d: %s = %#llx, expected %#llx\n", __FILE__, __LINE__, \
+				#a, static_cast<unsigned long long>(_a),                                \
+				static_cast<unsigned long long>(_b));                                   \
+			++g_failures;                                                               \
+		}                                                                               \
 	} while (0)
 
 namespace

@@ -58,7 +58,7 @@ namespace BM::Patterns
 	{
 		std::size_t count = 0;
 		for (std::size_t i = detail::SkipSpaces(a_pattern, 0); i < a_pattern.size();
-			 i = detail::SkipSpaces(a_pattern, detail::EndOfToken(a_pattern, i))) {
+			i = detail::SkipSpaces(a_pattern, detail::EndOfToken(a_pattern, i))) {
 			++count;
 		}
 		return count;
@@ -81,7 +81,7 @@ namespace BM::Patterns
 
 		std::size_t byte = 0;
 		for (std::size_t i = detail::SkipSpaces(a_pattern, 0); i < a_pattern.size();
-			 i = detail::SkipSpaces(a_pattern, detail::EndOfToken(a_pattern, i)), ++byte) {
+			i = detail::SkipSpaces(a_pattern, detail::EndOfToken(a_pattern, i)), ++byte) {
 			const auto end = detail::EndOfToken(a_pattern, i);
 			if (end - i != 2) {
 				return false;  // malformed token
@@ -104,13 +104,12 @@ namespace BM::Patterns
 	// Bytes that satisfy the pattern, with every wildcard set to a_fill.
 	// Test support: it lets a pattern be checked against itself, so a typo in
 	// the site table is caught natively instead of in-game.
-	[[nodiscard]] inline std::vector<std::uint8_t> Synthesise(std::string_view a_pattern,
-		std::uint8_t a_fill)
+	[[nodiscard]] inline std::vector<std::uint8_t> Synthesise(std::string_view a_pattern, std::uint8_t a_fill)
 	{
 		std::vector<std::uint8_t> out;
 		out.reserve(Length(a_pattern));
 		for (std::size_t i = detail::SkipSpaces(a_pattern, 0); i < a_pattern.size();
-			 i = detail::SkipSpaces(a_pattern, detail::EndOfToken(a_pattern, i))) {
+			i = detail::SkipSpaces(a_pattern, detail::EndOfToken(a_pattern, i))) {
 			const auto end = detail::EndOfToken(a_pattern, i);
 			const int  hi = (end - i == 2) ? detail::HexValue(a_pattern[i]) : -1;
 			const int  lo = (end - i == 2) ? detail::HexValue(a_pattern[i + 1]) : -1;

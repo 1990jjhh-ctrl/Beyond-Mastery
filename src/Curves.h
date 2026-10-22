@@ -49,7 +49,7 @@ namespace BM::Curves
 	[[nodiscard]] inline StepCost CostOfNextStep(std::uint32_t a_currentCap) noexcept
 	{
 		const auto t = Tier(static_cast<double>(a_currentCap));
-		StepCost cost;
+		StepCost   cost;
 		cost.perks = kPerksPerStep;
 		cost.blackSoulGems = t >= 1u ? t - 1u : 0u;
 		cost.dragonSouls = (a_currentCap % 100u == 0u) ? 10u * t : 0u;
@@ -161,7 +161,7 @@ namespace BM::Curves
 	// Matches value and slope of the vanilla curve at s = 100.
 	struct Asymptote
 	{
-		double limit{ 0.0 };     // L
+		double limit{ 0.0 };       // L
 		double valueAt100{ 0.0 };  // f(100)
 		double slopeAt100{ 0.0 };  // f'(100), sign must point towards L
 

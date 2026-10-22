@@ -83,7 +83,7 @@ namespace BM::Stubs
 		explicit XPGainStub(std::uintptr_t a_callee)
 		{
 			sub(rsp, kStubReserve);
-			mov(ecx, esi);                                        // arg 0: actor value
+			mov(ecx, esi);  // arg 0: actor value
 			// kStubFrameAdjust, not kStubReserve: the 5-byte call at the patch
 			// site pushed a return address before this sub rsp, so the
 			// engine's frame is a further 8 bytes away.

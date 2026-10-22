@@ -7,15 +7,15 @@ namespace BM
 	struct Config
 	{
 		// [General]
-		double xpGainFactorPerTier{ 1.0 };  // FR-9, range (0, 1]
-		bool   clampCharXPAbove100{ false };  // FR-11
-		bool   warnOnConflict{ true };        // FR-20
+		double                   xpGainFactorPerTier{ 1.0 };    // FR-9, range (0, 1]
+		bool                     clampCharXPAbove100{ false };  // FR-11
+		bool                     warnOnConflict{ true };        // FR-20
 		std::vector<std::string> knownConflicts{ "SkyrimUncapper", "Experience", "CustomSkills" };
 
 		// [Scaling] (FR-28)
 		bool   enableFormulaScaling{ true };
-		double spellCostLimit{ 0.25 };  // FR-25
-		double barterMinRatio{ 1.2 };   // FR-26
+		double spellCostLimit{ 0.25 };             // FR-25
+		double barterMinRatio{ 1.2 };              // FR-26
 		double enchantChargeLimitFraction{ 0.5 };  // FR-30, limit = fraction x value at 100
 
 		static Config& Get() noexcept;
