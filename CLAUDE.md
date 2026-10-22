@@ -11,7 +11,9 @@ Two documents are the contract for this work and should be read before changing 
 - [PRD.md](PRD.md) — approved requirements, numbered `FR-1` … `FR-30`. Code and tests cite these IDs in comments; keep the citations accurate when you change either side.
 - [docs/hook-points.md](docs/hook-points.md) — which engine function each requirement needs, with Address Library IDs, byte offsets and a confidence rating per site.
 
-**Current milestone:** all nine hook sites are verified against a real `SkyrimSE.exe` — run `scripts/verify_sites.py` to repeat it (hook-points.md §9a). Cap enforcement (FR-2, FR-8) and the XP gain factor (FR-9) are implemented and installed on AE/1.7.x; the XP hook is skipped at the default `fXPGainFactorPerTier` of 1.0, where it would be a no-op. **None of it has run in a game yet** — that needs SKSE64 and the Address Library, neither of which is installed here.
+**Current milestone:** all nine hook sites are verified against a real `SkyrimSE.exe` — run `scripts/verify_sites.py` to repeat it (hook-points.md §9a). Cap enforcement (FR-2, FR-8) and the XP gain factor (FR-9) are implemented and installed on AE/1.7.x; the XP hook is skipped at the default `fXPGainFactorPerTier` of 1.0, where it would be a no-op.
+
+**Verified in-game on 1.7.104** (SKSE64 2.3.1, Proton): the plugin loads, all nine sites resolve live to the addresses `verify_sites.py` predicts, and the cap hook installs and runs on every skill XP gain without crashing. Skills level normally and stop at the default cap of 100 (One-Handed via `player.advskill`, Alchemy). With every cap at 100 that is indistinguishable from vanilla, so a *raised* cap has not been exercised — that needs the cap-raise transaction.
 
 Deliberately not done: cap enforcement on SE 1.5.97 (its patch shape is unconfirmed, so the site is left alone rather than patched on a guess), FR-10's double XP accumulator, FR-11's character-XP clamp, the cap-raise transaction and menu, and all formula scaling. See `docs/superpowers/plans/` and that plan's ledger for the reasoning.
 
@@ -27,6 +29,8 @@ scripts/build.sh    # runs test.sh, then configures + builds BeyondMastery.dll
 
 `setup.sh` prints three environment variables (`VCPKG_ROOT`, `XWIN_SYSROOT`, `LLVM_MINGW_BIN`) that must be exported before `build.sh` works. The first `build.sh` compiles CommonLibSSE-NG and all vcpkg ports and takes a long time; later builds are incremental via Ninja in `build/release/`.
 
+The plugin links the C++ runtime **statically** (`/MT`, overlay triplet `cmake/triplets/x64-windows-clangcl-static.cmake`). Do not switch back to `/MD`: the player's `msvcp140.dll` can be arbitrarily old — the first in-game run met the 2016 VS 2015 U3 runtime in the Proton prefix — and STL 14.40+ `std::mutex` faults on its first lock against it. `scripts/check_runtime_deps.py` fails the build if `msvcp140`/`vcruntime140` ever reappear in the import table.
+
 There is only one CMake preset, `linux-clangcl-release`. Direct equivalent of `build.sh`:
 
 ```bash
@@ -35,7 +39,16 @@ cmake --preset linux-clangcl-release && cmake --build --preset release
 
 ### Unit tests
 
-Each file in `tests/` is a self-contained binary with `CHECK`/`CHECK_NEAR` macros and a hand-written `main()` — no test framework. `scripts/test.sh` loops over them and compiles each with `c++ -std=c++20 -Wall -Wextra -Werror -I src`, entirely outside CMake; add a new test by adding its name to that loop. Currently `test_curves` (the math in `src/Curves.h`) and `test_hooksites` (every pattern in `src/HookSites.h` is well-formed).
+The C++ tests in `tests/` are self-contained binaries with `CHECK`/`CHECK_EQ`/`CHECK_NEAR` macros and a hand-written `main()` — no test framework. `scripts/test.sh` loops over them and compiles each with `c++ -std=c++20 -Wall -Wextra -Werror -I src`, entirely outside CMake; add a new one by adding its name to that loop. The Python tests run under stdlib `unittest` (this host has no pytest).
+
+| Test | Covers |
+|---|---|
+| `test_curves` | the math in `src/Curves.h` |
+| `test_hooksites` | the site table and the runtime gate in `src/HookSites.h` |
+| `test_patterns` | byte-signature matching in `src/Patterns.h` |
+| `test_stubs` | the hand-written trampolines in `src/Stubs.h`, **emitted with xbyak and inspected** — frame arithmetic, registers, budget. Needs the xbyak headers from the vcpkg install, which is why `build.sh` configures before testing. |
+| `test_verify_sites.py` | Address Library parsing and site verification against the real `SkyrimSE.exe` (skips when absent) |
+| `test_runtime_deps.py` | the build gate that keeps the plugin off the player's C++ runtime |
 
 To run one group of tests, call just that function from `main()`, or build and run directly:
 
@@ -43,7 +56,7 @@ To run one group of tests, call just that function from `main()`, or build and r
 c++ -std=c++20 -I src tests/test_curves.cpp -o build/native/test_curves && build/native/test_curves
 ```
 
-This is the only automated test layer, and it can only cover the game-free headers (`src/Curves.h`, `src/HookSites.h`). Everything else needs the game. A cross-compiled DLL can also crash in-game on ABI/layout mismatches the compiler cannot see, so in-game testing is mandatory before claiming a change works.
+This is the only automated test layer, and it can only cover the game-free headers (`Curves.h`, `HookSites.h`, `Patterns.h`, `Stubs.h`). Everything else needs the game. A cross-compiled DLL can also crash in-game on ABI/layout mismatches the compiler cannot see, so in-game testing is mandatory before claiming a change works.
 
 ## Architecture
 

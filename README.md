@@ -16,9 +16,10 @@ Address Library with a byte-signature check before touching anything. All nine
 were verified offline against a real `SkyrimSE.exe` — run
 `scripts/verify_sites.py` to repeat it ([docs/hook-points.md](docs/hook-points.md) §9a).
 
-Cap enforcement is installed on AE and 1.7.x. **It has not yet been exercised
-in a running game**, because that needs SKSE64 and the Address Library for the
-target runtime. Treat it as untested against a save you care about.
+Cap enforcement is installed on AE and 1.7.x and has been run in-game on
+1.7.104: skills level normally and stop at their cap. Every cap is still 100
+until the cap-raise transaction exists, so in practice it currently plays
+exactly like vanilla; a raised cap has not been tested yet.
 
 Not yet implemented: the cap-raise transaction and its menu (so caps cannot be
 raised in-game yet), formula scaling above 100, and cap enforcement on SE
