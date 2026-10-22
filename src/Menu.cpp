@@ -112,8 +112,14 @@ namespace BM::Menu
 
 		void Apply(RE::ActorValue a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
 		{
-			if (!Resources::Spend(a_upgrade.cost, a_gems)) {
+			switch (Resources::Spend(a_upgrade.cost, a_gems)) {
+			case Resources::SpendResult::kSpent:
+				break;
+			case Resources::SpendResult::kNotAffordable:
 				RE::SendHUDMessage::ShowHUDMessage("Not enough to upgrade any more. Nothing was spent.");
+				return;
+			case Resources::SpendResult::kGemRemovalFailed:
+				RE::SendHUDMessage::ShowHUDMessage("Could not take the soul gems; the upgrade was not applied. See BeyondMastery.log.");
 				return;
 			}
 			const auto index = Skills::ToIndex(a_skill);

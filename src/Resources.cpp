@@ -105,14 +105,14 @@ namespace BM::Resources
 		return a_holdings.consumableGems + (a_holdings.blackStarFilled ? 1u : 0u);
 	}
 
-	bool Spend(const Curves::StepCost& a_cost, const Curves::GemPlan& a_gems)
+	SpendResult Spend(const Curves::StepCost& a_cost, const Curves::GemPlan& a_gems)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
-			return false;
+			return SpendResult::kNotAffordable;
 		}
 
-		// FR-5: everything is checked before anything is deducted. Re-read rather
+		// FR-5: everything is checked before anything is taken. Re-read rather
 		// than trust the box the player was looking at.
 		const auto have = Read();
 		const auto plannedGems = a_gems.consumable + (a_gems.blackStar ? 1u : 0u);
@@ -121,45 +121,62 @@ namespace BM::Resources
 			a_gems.consumable > have.consumableGems ||
 			(a_gems.blackStar && !have.blackStarFilled)) {
 			logger::warn("Upgrade no longer affordable when confirmed; nothing spent");
-			return false;
+			return SpendResult::kNotAffordable;
 		}
 
-		player->GetGameStatsData().perkCount -= static_cast<std::uint8_t>(a_cost.perks);
-
-		// The soul count is a plain counter on the base value; a modifier would
-		// stack on top of it rather than spend it.
-		if (a_cost.dragonSouls > 0) {
-			player->AsActorValueOwner()->ModBaseActorValue(RE::ActorValue::kDragonSouls,
-				-static_cast<float>(a_cost.dragonSouls));
-		}
-
-		// The Black Star first, before any removal can reshuffle the inventory
-		// under the pointer: drop its soul in place, so the item itself -- and
-		// anything attached to that instance -- stays (FR-6).
+		// Gems first: they are the only part the engine can refuse. Perks and
+		// dragon souls follow only once every gem is taken, so a failure here
+		// never costs them and never applies the upgrade.
+		//
+		// The Black Star before any removal can reshuffle the inventory under the
+		// pointer: drop its soul in place, so the item itself -- and anything
+		// attached to that instance -- stays (FR-6).
 		if (a_gems.blackStar) {
 			if (auto* star = ScanBlackGems(player).blackStar) {
 				star->RemoveByType(RE::ExtraDataType::kSoul);
 			}
+			if (ScanBlackGems(player).blackStar) {
+				logger::error("The Black Star kept its soul; nothing else taken");
+				return SpendResult::kGemRemovalFailed;
+			}
 		}
 
-		// Consumable gems. Re-scan after every removal: removing from one stack
-		// can merge or free the extra data another stack pointer refers to.
+		// Consumable gems, one stack at a time with a re-scan after each removal:
+		// removing from one stack can merge or free another stack's extra data.
+		// Every removal must visibly take what it asked for -- if the engine
+		// refuses one, the next scan would offer the same stack forever.
 		auto left = a_gems.consumable;
 		while (left > 0) {
 			const auto scan = ScanBlackGems(player);
 			if (scan.consumable.empty()) {
 				logger::error("Ran out of black soul gems while spending ({} short)", left);
-				break;
+				return SpendResult::kGemRemovalFailed;
 			}
 			const auto& stack = scan.consumable.front();
 			const auto  take = std::min<std::uint32_t>(left, static_cast<std::uint32_t>(stack.count));
 			player->RemoveItem(stack.gem, static_cast<std::int32_t>(take), RE::ITEM_REMOVE_REASON::kRemove,
 				stack.extra, nullptr);
+			const auto after = ScanBlackGems(player).consumableCount;
+			if (after + take != scan.consumableCount) {
+				logger::error("Removing {} black soul gem(s) took {} instead; stopping ({} still owed)", take,
+					scan.consumableCount - std::min(after, scan.consumableCount), left);
+				return SpendResult::kGemRemovalFailed;
+			}
 			left -= take;
+		}
+
+		player->GetGameStatsData().perkCount -= static_cast<std::uint8_t>(a_cost.perks);
+
+		// The way the engine itself spends a dragon soul when a shout is learned:
+		// ModActorValue(kPermanent, kDragonSouls, -1.0) (SkyrimSE.exe 1.7.104,
+		// 0x1409538e3). The count lives in the permanent modifier, not the base.
+		if (a_cost.dragonSouls > 0) {
+			player->AsActorValueOwner()->ModActorValue(RE::ACTOR_VALUE_MODIFIERS::kPermanent,
+				RE::ActorValue::kDragonSouls, -static_cast<float>(a_cost.dragonSouls));
 		}
 
 		logger::info("Spent {} perk(s), {} dragon soul(s), {} black soul gem(s){}", a_cost.perks,
 			a_cost.dragonSouls, a_gems.consumable, a_gems.blackStar ? " and The Black Star's soul" : "");
-		return true;
+		return SpendResult::kSpent;
 	}
 }
