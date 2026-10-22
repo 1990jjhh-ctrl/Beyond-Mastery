@@ -82,6 +82,7 @@ Consequences to keep in mind:
 - Prefer not installing a hook that the current config makes a no-op (e.g. the XP-gain hook at default `f = 1.0`, the character-XP hook when `bClampCharXPAbove100` is false) — fewer hooks, fewer conflicts.
 - Take IDs and offsets from hook-points.md as *facts about the binary to re-verify*, not as working code: the Rust uncapper referenced there has no license file and nothing may be copied from it.
 - Derive formula constants from the disassembly or from GMSTs read at runtime, not from UESP values.
+- Reach any member of a game structure whose layout differs between runtimes through CommonLibSSE-NG's runtime accessors — `RUNTIME_*_ACCESSOR*` (e.g. `AsActorValueOwner()`), `GetXRuntimeData()`, `REL::RelocateMember*` — never through a hardcoded offset or a direct member. The plugin declares `StructCompatibility::Independent` (SKSE's `NoStructUse`), and that claim is only true because one binary resolves every such offset from the running game's version. `PlayerCharacter`'s perk count and skills data are 1.6.629-sensitive and are next in line for this (the cap-raise transaction).
 
 ## License constraint
 

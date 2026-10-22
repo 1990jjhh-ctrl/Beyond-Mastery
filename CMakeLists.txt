@@ -53,6 +53,17 @@ set(SOURCES
 	src/main.cpp
 )
 
+# StructCompatibility is left at NG's default, Independent (SKSE's NoStructUse),
+# and that is a verified claim rather than an accident. We do touch a gameplay
+# structure whose layout changed at 1.6.629 -- Actor's ActorValueOwner moved
+# from 0xB0 to 0xB8 -- but only through NG's RUNTIME_CAST_ACCESSOR_VERSIONED,
+# which picks the offset from the running game's version at call time. One
+# binary is therefore correct on both sides of 629, which is the "EXTREME
+# EFFORT ... truly generic" case SKSE's PluginManager.cpp allows. STRUCT_DEPENDENT
+# would be the wrong declaration: it cannot describe a binary spanning 629.
+#
+# It stays true only while every runtime-variant member is reached through NG's
+# runtime accessors -- see "Working on hooks" in CLAUDE.md.
 add_commonlibsse_plugin(
 	${PROJECT_NAME}
 	NAME "BeyondMastery"
