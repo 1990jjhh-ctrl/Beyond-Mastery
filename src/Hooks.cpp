@@ -53,6 +53,9 @@ namespace BM::Hooks
 			if (g_addressLibraryMissing) {
 				return {};
 			}
+			if (!HookSites::ExistsOn(a_site, UseAE())) {
+				return { SiteStatus::kNotOnThisRuntime, 0 };
+			}
 
 			const REL::RelocationID id{ a_site.se.id, a_site.ae.id };
 			const auto              base = id.address();
@@ -199,6 +202,8 @@ namespace BM::Hooks
 			return "kReady"sv;
 		case SiteStatus::kSignatureMismatch:
 			return "kSignatureMismatch"sv;
+		case SiteStatus::kNotOnThisRuntime:
+			return "kNotOnThisRuntime"sv;
 		default:
 			return "kUnresolved"sv;
 		}
@@ -256,6 +261,9 @@ namespace BM::Hooks
 		// still go to MessageBoxMenu::Create -- the byte pattern wildcards the
 		// call's target, so this is what catches another mod that already
 		// redirected it.
+		//
+		// A mod that changes Legendary itself needs a compatibility patch; this
+		// plugin does not try to chain onto it.
 		[[nodiscard]] bool InstallLegendaryMenu(std::uintptr_t a_siteA, std::uintptr_t a_siteB)
 		{
 			const auto                                                             create = MessageBoxCreateAddress();
@@ -267,7 +275,8 @@ namespace BM::Hooks
 				if (CallTarget(call) != create) {
 					logger::error(
 						"{}: the call at {:#x} no longer goes to MessageBoxMenu::Create -- another "
-						"mod has redirected it. Not installing the Legendary menu.",
+						"mod has redirected it and needs a compatibility patch. Not installing the "
+						"Legendary menu.",
 						site->name, call);
 					g_signatureMismatch = true;
 					return false;
@@ -309,6 +318,10 @@ namespace BM::Hooks
 			if (checked.status == SiteStatus::kReady) {
 				logger::info("Hook site {} resolved to {:#x}: {}{}", site->name, checked.address,
 					StatusName(checked.status), needed ? "" : " (not used by this build yet)");
+			} else if (checked.status == SiteStatus::kNotOnThisRuntime) {
+				// Expected, not a fault: the feature behind it is AE/1.7.x only
+				// and says so where it is installed.
+				logger::info("Hook site {}: not located on this runtime, skipped", site->name);
 			} else if (needed) {
 				logger::error("Hook site {} at {:#x}: {} -- not patching it", site->name,
 					checked.address, StatusName(checked.status));
@@ -371,9 +384,11 @@ namespace BM::Hooks
 			const auto b = CheckDetailed(HookSites::kLegendaryBoxB);
 			if (a.status == SiteStatus::kReady && b.status == SiteStatus::kReady) {
 				g_legendaryMenuInstalled = InstallLegendaryMenu(a.address, b.address);
+				allReady = allReady && g_legendaryMenuInstalled;
 			}
 		} else {
-			logger::warn("Cap hook not installed, so the Legendary menu is not either; Legendary stays vanilla");
+			// Info, not a warning: why the cap hook is missing was logged above.
+			logger::info("Cap hook not installed, so the Legendary menu is not either; Legendary stays vanilla");
 		}
 
 		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}; Legendary menu {}",

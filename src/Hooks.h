@@ -16,7 +16,8 @@ namespace BM::Hooks
 	{
 		kReady,              // resolved and the expected bytes are present
 		kSignatureMismatch,  // resolved but the bytes differ -- do not patch
-		kUnresolved          // the address could not be resolved at all
+		kUnresolved,         // the address could not be resolved at all
+		kNotOnThisRuntime    // the site was only located on the other runtime
 	};
 
 	[[nodiscard]] std::string_view StatusName(SiteStatus a_status) noexcept;

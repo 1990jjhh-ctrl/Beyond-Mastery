@@ -254,6 +254,9 @@ namespace BM::Menu
 				buttons.push_back({ "Upgrade", [=] { ShowUpgrade(a_skill, a_vanilla); } });
 			} else if (!atLimit) {
 				body = std::format("Reach {} to upgrade {}.", limit, name);
+			} else {
+				// kMaxPlausibleCap: 990 upgrades and 49 500 dragon souls in.
+				body = std::format("{} {}. There is nothing left to learn. Perhaps try going outside.", name, cap);
 			}
 			buttons.push_back({ "Cancel", {} });
 			Show(body, buttons);

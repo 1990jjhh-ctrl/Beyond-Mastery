@@ -94,10 +94,26 @@ static void TestLegendaryBoxSites()
 		CHECK(s->patternAE.substr(kLegendaryCallOffset * 3, 2) == "E8");
 }
 
+static void TestExistsOn()
+{
+	using namespace BM::HookSites;
+	// The Legendary sites have no SE ids: absent there, not unresolved.
+	for (const auto* s : { &kLegendaryBoxA, &kLegendaryBoxB }) {
+		CHECK(!ExistsOn(*s, false));
+		CHECK(ExistsOn(*s, true));
+	}
+	// Every other site exists on both runtimes.
+	for (const auto* s : kAllSites) {
+		if (s != &kLegendaryBoxA && s != &kLegendaryBoxB)
+			CHECK(ExistsOn(*s, false) && ExistsOn(*s, true));
+	}
+}
+
 int main()
 {
 	TestPatternsWellFormed();
 	TestLegendaryBoxSites();
+	TestExistsOn();
 	TestRuntimeGate();
 	TestEverySiteVerified();
 	if (g_failures == 0)

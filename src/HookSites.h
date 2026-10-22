@@ -78,6 +78,14 @@ namespace BM::HookSites
 		bool             verified;
 	};
 
+	// Whether a_site has an address on the SE (false) or AE/1.7.x (true)
+	// runtime. An id of 0 means the site was never located there, which is
+	// expected and distinct from an id the address library cannot resolve.
+	[[nodiscard]] constexpr bool ExistsOn(const Site& a_site, bool a_ae) noexcept
+	{
+		return (a_ae ? a_site.ae.id : a_site.se.id) != 0;
+	}
+
 	// --- Skill cap and XP (hook-points.md §1-3) ----------------------------
 
 	// Register holding the skill at the patch point, from our disassembly of
