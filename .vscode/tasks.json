@@ -1,0 +1,35 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "format: check",
+			"detail": "Report clang-format violations without changing anything",
+			"type": "shell",
+			"command": "${workspaceFolder}/scripts/format.sh",
+			"args": ["--check"],
+			"options": { "cwd": "${workspaceFolder}" },
+			"presentation": { "reveal": "always", "clear": true },
+			"problemMatcher": {
+				"owner": "clang-format",
+				"fileLocation": ["relative", "${workspaceFolder}"],
+				"pattern": {
+					"regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+					"file": 1,
+					"line": 2,
+					"column": 3,
+					"severity": 4,
+					"message": 5
+				}
+			}
+		},
+		{
+			"label": "format: fix",
+			"detail": "Format src/ and tests/ in place",
+			"type": "shell",
+			"command": "${workspaceFolder}/scripts/format.sh",
+			"options": { "cwd": "${workspaceFolder}" },
+			"presentation": { "reveal": "always", "clear": true },
+			"problemMatcher": []
+		}
+	]
+}
