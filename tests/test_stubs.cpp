@@ -148,11 +148,13 @@ static void TestCapStubSpillsAndRestoresXmm0()
 
 static void TestStubsFitTheTrampolineBudget()
 {
-	// main.cpp asks SKSE for 256 bytes; both stubs plus their write_call
-	// thunks (14 bytes each) have to fit with room to spare.
+	// main.cpp asks SKSE for 256 bytes; both stubs plus every write_call
+	// thunk (14 bytes each) have to fit with room to spare.
 	const auto cap = Emit<BM::Stubs::CapStub>().size();
 	const auto xp = Emit<BM::Stubs::XPGainStub>().size();
-	CHECK(cap + xp + 2 * 14 < 256);
+	// Four write_call<5> thunks: the cap and XP sites, and the two Legendary
+	// box call sites.
+	CHECK(cap + xp + 4 * 14 < 256);
 }
 
 int main()

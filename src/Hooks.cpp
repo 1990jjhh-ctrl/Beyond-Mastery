@@ -2,6 +2,7 @@
 
 #include "Config.h"
 #include "Curves.h"
+#include "Menu.h"
 #include "Skills.h"
 #include "State.h"
 #include "Stubs.h"
@@ -17,6 +18,7 @@ namespace BM::Hooks
 		bool g_signatureMismatch = false;
 		bool g_capHookInstalled = false;
 		bool g_xpGainHookInstalled = false;
+		bool g_legendaryMenuInstalled = false;
 
 		// REL::Module classifies a runtime by minor version: 4 = VR, 5 = SE,
 		// 6 and above = AE. So 1.7.x takes the AE path throughout -- the AE
@@ -134,7 +136,29 @@ namespace BM::Hooks
 
 	float GetSkillCap(RE::ActorValue a_av) noexcept
 	{
-		return static_cast<float>(State::Get().LimitOf(a_av));
+		auto& state = State::Get();
+
+		// Paid gates exist only at level 100 and above, so a skill below 100
+		// that still holds some has been reset: it starts a new climb (FR-13).
+		// This runs on every XP gain, including each level from 15 back up to
+		// 100, so it catches a Legendary reset whenever it lands -- even if
+		// vanilla applies it after Menu's own check -- and never fires when
+		// Legendary declined, because then the level never dropped.
+		if (Skills::IsSkill(a_av)) {
+			const auto index = Skills::ToIndex(a_av);
+			if (state.GatesPaid(index) > 0) {
+				const auto* player = RE::PlayerCharacter::GetSingleton();
+				if (player && player->AsActorValueOwner()->GetBaseActorValue(a_av) < 100.0f) {
+					state.ClearGates(index);
+				}
+			}
+		}
+		return static_cast<float>(state.LimitOf(a_av));
+	}
+
+	bool LegendaryMenuInstalled() noexcept
+	{
+		return g_legendaryMenuInstalled;
 	}
 
 	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_improveMult, float a_points,
@@ -205,7 +229,55 @@ namespace BM::Hooks
 			if (&a_site == &HookSites::kImprovePlayerSkillPoints) {
 				return UseAE() && Config::Get().xpGainFactorPerTier < 1.0;
 			}
+			if (&a_site == &HookSites::kLegendaryBoxA || &a_site == &HookSites::kLegendaryBoxB) {
+				return UseAE();  // AE/1.7.x only, like the cap hook it depends on
+			}
 			return false;
+		}
+
+		// MessageBoxMenu::Create, resolved the way CommonLibSSE resolves it: AE
+		// was recompiled at 1.6.1130, which moved its id.
+		[[nodiscard]] std::uintptr_t MessageBoxCreateAddress()
+		{
+			static REL::Relocation<std::uintptr_t> create{ RELOCATION_ID(51421,
+				AE_CHECK(SKSE::RUNTIME_SSE_1_6_1130, 52270, 442726)) };
+			return create.address();
+		}
+
+		// Where a 5-byte `call rel32` at a_call goes.
+		[[nodiscard]] std::uintptr_t CallTarget(std::uintptr_t a_call) noexcept
+		{
+			const auto rel = *reinterpret_cast<const std::int32_t*>(a_call + 1);
+			return a_call + 5 + static_cast<std::intptr_t>(rel);
+		}
+
+		// Both Legendary sites or neither: one hooked and one not would show our
+		// menu on one input path and vanilla's box on the other. Each call must
+		// still go to MessageBoxMenu::Create -- the byte pattern wildcards the
+		// call's target, so this is what catches another mod that already
+		// redirected it.
+		[[nodiscard]] bool InstallLegendaryMenu(std::uintptr_t a_siteA, std::uintptr_t a_siteB)
+		{
+			const auto                                                             create = MessageBoxCreateAddress();
+			const std::array<std::pair<const HookSites::Site*, std::uintptr_t>, 2> sites{ {
+				{ &HookSites::kLegendaryBoxA, a_siteA + HookSites::kLegendaryCallOffset },
+				{ &HookSites::kLegendaryBoxB, a_siteB + HookSites::kLegendaryCallOffset },
+			} };
+			for (const auto& [site, call] : sites) {
+				if (CallTarget(call) != create) {
+					logger::error(
+						"{}: the call at {:#x} no longer goes to MessageBoxMenu::Create -- another "
+						"mod has redirected it. Not installing the Legendary menu.",
+						site->name, call);
+					g_signatureMismatch = true;
+					return false;
+				}
+			}
+			for (const auto& [site, call] : sites) {
+				SKSE::GetTrampoline().write_call<5>(call, &Menu::OpenLegendary);
+				logger::info("{} hooked at {:#x}", site->name, call);
+			}
+			return true;
 		}
 	}
 
@@ -292,10 +364,23 @@ namespace BM::Hooks
 				"implemented yet, so the setting currently has no effect.");
 		}
 
-		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}",
+		// The Legendary menu (FR-14). Only where the cap hook is in: Upgrade
+		// raises a cap, and an unenforced cap would be a raise that does nothing.
+		if (g_capHookInstalled) {
+			const auto a = CheckDetailed(HookSites::kLegendaryBoxA);
+			const auto b = CheckDetailed(HookSites::kLegendaryBoxB);
+			if (a.status == SiteStatus::kReady && b.status == SiteStatus::kReady) {
+				g_legendaryMenuInstalled = InstallLegendaryMenu(a.address, b.address);
+			}
+		} else {
+			logger::warn("Cap hook not installed, so the Legendary menu is not either; Legendary stays vanilla");
+		}
+
+		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}; Legendary menu {}",
 			allReady ? "all ready" : "some unavailable",
 			g_capHookInstalled ? "installed" : "not installed",
-			g_xpGainHookInstalled ? "installed" : "not installed");
+			g_xpGainHookInstalled ? "installed" : "not installed",
+			g_legendaryMenuInstalled ? "installed" : "not installed");
 		return allReady;
 	}
 }

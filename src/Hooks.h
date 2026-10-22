@@ -53,4 +53,7 @@ namespace BM::Hooks
 		float a_improveOffset) noexcept;
 
 	[[nodiscard]] bool XPGainHookInstalled() noexcept;
+
+	// True once both Legendary box call sites route to Menu::OpenLegendary.
+	[[nodiscard]] bool LegendaryMenuInstalled() noexcept;
 }
