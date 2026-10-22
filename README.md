@@ -1,13 +1,14 @@
 # Beyond Mastery
 
-SKSE plugin for Skyrim SE 1.5.97, AE 1.6.x and 1.7.x: raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems. Skill effects above 100 continue sub-linearly or asymptotically.
+SKSE plugin for Skyrim AE 1.6.x and 1.7.x: raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems. Skill effects above 100 continue sub-linearly or asymptotically.
 
 - Requirements: [PRD.md](PRD.md)
 - Engine hook design: [docs/hook-points.md](docs/hook-points.md)
 
 ## Status
 
-Supported runtimes: SE 1.5.97, AE 1.6.x and 1.7.x.
+Supported runtimes: AE 1.6.x and 1.7.x. SE 1.5.97 is out of scope for now
+(PRD §3): the plugin loads there but stays inactive.
 
 Working: the plugin loads, writes `BeyondMastery.log`, reads and writes
 `BeyondMastery.ini`, persists per-skill caps in the SKSE co-save, warns once
@@ -22,10 +23,7 @@ until the cap-raise transaction exists, so in practice it currently plays
 exactly like vanilla; a raised cap has not been tested yet.
 
 Not yet implemented: the cap-raise transaction and its menu (so caps cannot be
-raised in-game yet), formula scaling above 100, and cap enforcement on SE
-1.5.97 — the SE form of that patch site is not yet confirmed, so it is
-deliberately left unpatched rather than patched on a guess. On SE the plugin
-loads, stores caps and says so in the log; skills still stop at 100.
+raised in-game yet) and formula scaling above 100.
 
 ## Uninstalling
 

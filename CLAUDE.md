@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`BeyondMastery.dll` — an SKSE plugin for Skyrim SE 1.5.97, AE 1.6.x and 1.7.x (no VR, no LE) that lets the player raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems, and continues skill-dependent formulas sub-linearly or asymptotically above 100.
+`BeyondMastery.dll` — an SKSE plugin for Skyrim AE 1.6.x and 1.7.x (no SE 1.5.97 for now — PRD §3; no VR, no LE) that lets the player raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems, and continues skill-dependent formulas sub-linearly or asymptotically above 100.
 
 Two documents are the contract for this work and should be read before changing behavior:
 
@@ -15,7 +15,7 @@ Two documents are the contract for this work and should be read before changing 
 
 **Verified in-game on 1.7.104** (SKSE64 2.3.1, Proton): the plugin loads, all nine sites resolve live to the addresses `verify_sites.py` predicts, and the cap hook installs and runs on every skill XP gain without crashing. Skills level normally and stop at the default cap of 100 (One-Handed via `player.advskill`, Alchemy). With every cap at 100 that is indistinguishable from vanilla, so a *raised* cap has not been exercised — that needs the cap-raise transaction.
 
-Deliberately not done: cap enforcement on SE 1.5.97 (its patch shape is unconfirmed, so the site is left alone rather than patched on a guess), FR-10's double XP accumulator, FR-11's character-XP clamp, the cap-raise transaction and menu, and all formula scaling. See `docs/superpowers/plans/` and that plan's ledger for the reasoning.
+Out of scope for now: SE 1.5.97 (PRD §3). Its patch shapes are unconfirmed without a 1.5.97 binary, so on SE the plugin loads and leaves everything vanilla; the SE IDs in `HookSites.h` stay as a starting point. Deliberately not done: FR-10's double XP accumulator, FR-11's character-XP clamp, the cap-raise transaction and menu, and all formula scaling. See `docs/superpowers/plans/` and that plan's ledger for the reasoning.
 
 ## Build and test
 

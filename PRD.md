@@ -1,7 +1,7 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.5 — Approved** (2026-10-22; v1.5 keeps vanilla Legendary's second confirmation and adds the cap notice to it — FR-31)
-Date: 2026-10-22
+Status: **v1.6 — Approved** (2026-10-23; v1.6 moves SE 1.5.97 out of scope — §3)
+Date: 2026-10-23
 Owner: Joel Hirsbrunner
 
 ---
@@ -22,11 +22,12 @@ Skill effects above 100 must keep rewarding the player but never run away: every
 - No changes to formulas at skill ≤ 100. Vanilla behavior is untouched up to 100.
 - No console / Bethesda.net Creation version (requires SKSE).
 - No LE (Oldrim) support.
+- No SE 1.5.97 support for now. Its patch sites could not be verified without a 1.5.97 binary, and a guessed patch risks corrupting XP or crashing. On 1.5.97 the plugin loads, changes nothing (vanilla behavior: skills stop at 100, Legendary unchanged) and says so in its log. To be revisited once a 1.5.97 install is available.
 - No MCM requirement.
 
 ## 4. Target users & platform
 
-- PC players on Skyrim **SE 1.5.97**, **AE 1.6.x** and **1.7.x**, using SKSE64 and Address Library.
+- PC players on Skyrim **AE 1.6.x** and **1.7.x**, using SKSE64 and Address Library. SE 1.5.97 is out of scope (§3).
 - A single DLL via **CommonLibSSE-NG**. No plugin file (ESP/ESL): the entry point is vanilla Legendary (FR-14).
 
 ## 5. Definitions
@@ -188,13 +189,13 @@ Spell cost skill factor, for comparison:
 
 ## 7. Constraints
 
-- Requires SKSE64, Address Library for SKSE Plugins, and a CommonLibSSE-NG build covering SE 1.5.97, AE 1.6.x and 1.7.x.
+- Requires SKSE64, Address Library for SKSE Plugins, and a CommonLibSSE-NG build covering AE 1.6.x and 1.7.x.
 - Hook locations must be resolved through Address Library IDs (no hardcoded offsets). 1.7.x reuses the AE IDs: `REL::RelocationID` selects the AE ID for every runtime at or above 1.6.317, and the AE IDs, byte offsets and instruction patterns were confirmed unchanged on 1.7.104 (docs/hook-points.md §9a).
 - No plugin file: the entry point is vanilla Legendary (FR-14), so the mod adds no records and takes no load-order slot.
 
 ## 8. Success criteria
 
-1. On SE 1.5.97 and the current AE version: pressing Legendary on a skill at 100 and choosing Upgrade raises its cap to 110 for 1 perk + 10 dragon souls; the skill then trains to 110 through use, then stops.
+1. On the current AE version: pressing Legendary on a skill at 100 and choosing Upgrade raises its cap to 110 for 1 perk + 10 dragon souls; the skill then trains to 110 through use, then stops.
 2. Step 11 (200→210) consumes exactly 1 perk point, 1 filled black soul gem, and 20 dragon souls; failure with any missing resource consumes nothing.
 3. Caps survive save/load and Reset Skill. After Reset Skill, the retrained skill stops at each unpaid gate (100, 200, …) until Upgrade pays it.
 4. Character XP from a skill-up at 150 is 1.5× that of a skill-up at 100 (clamp off), and equal to it with clamp on.
@@ -232,4 +233,8 @@ Resolved in v1.4:
 
 5. The menu is reached through vanilla Legendary, not a lesser power (FR-14 … FR-17, FR-31). No plugin file is needed. Costs appear only once Upgrade is selected.
 6. Dragon-soul gates recur: Reset Skill clears them, and the next climb pays each one again (FR-13).
+
+Resolved in v1.6:
+
+7. SE 1.5.97 is out of scope until a 1.5.97 binary is available to verify its patch sites (§3).
 4. Block, Lockpicking, Pickpocket and Sneak are linear in skill in vanilla → form A (FR-24). Sources: UESP Block, Pickpocket, Sneak, and the Lockpicking talk page (sweet-spot formula unofficial, to verify in disassembly).
