@@ -10,20 +10,24 @@ SKSE plugin for Skyrim AE 1.6.x and 1.7.x: raise each skill's cap above 100 in +
 Supported runtimes: AE 1.6.x and 1.7.x. SE 1.5.97 is out of scope for now
 (PRD §3): the plugin loads there but stays inactive.
 
-Working: the plugin loads, writes `BeyondMastery.log`, reads and writes
-`BeyondMastery.ini`, persists per-skill caps in the SKSE co-save, warns once
-about conflicting plugins, and resolves all nine engine patch sites through the
-Address Library with a byte-signature check before touching anything. All nine
-were verified offline against a real `SkyrimSE.exe` — run
-`scripts/verify_sites.py` to repeat it ([docs/hook-points.md](docs/hook-points.md) §9a).
+Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
+- The plugin loads.
+- Every patch site resolves to the address `scripts/verify_sites.py` predicts
+  ([docs/hook-points.md](docs/hook-points.md) §9a).
+- Skills level normally and stop at their cap.
 
-Cap enforcement is installed on AE and 1.7.x and has been run in-game on
-1.7.104: skills level normally and stop at their cap. Every cap is still 100
-until the cap-raise transaction exists, so in practice it currently plays
-exactly like vanilla; a raised cap has not been tested yet.
+Implemented, but not yet verified in-game:
+- The Legendary menu (Reset Skill / Upgrade).
+- Paying for a cap raise with perks, dragon souls and black soul gems.
+- Dragon-soul gates.
 
-Not yet implemented: the cap-raise transaction and its menu (so caps cannot be
-raised in-game yet) and formula scaling above 100.
+Not yet implemented: formula scaling above 100, FR-10's double XP accumulator
+and FR-11's character-XP clamp.
+
+## Install
+
+Copy `BeyondMastery.dll` to `Data/SKSE/Plugins/`. Requires SKSE64 and Address
+Library for SKSE Plugins.
 
 ## Uninstalling
 
@@ -37,34 +41,9 @@ those skills keep their higher levels; they simply sit above their cap and stop
 earning XP until the cap is raised past them again. No resource you already
 spent is refunded.
 
-## Layout
+## Development
 
-| Path | Content |
-|---|---|
-| `src/Curves.h` | Pure math: costs, XP factor, form A/B curves. Unit-tested natively. |
-| `src/Config.*` | INI settings |
-| `src/State.*` | Per-skill caps, co-save serialization |
-| `src/Skills.h` | Skill ↔ actor value mapping, scaling form per skill |
-| `src/main.cpp` | SKSE entry point |
-| `tests/` | Native unit tests |
-| `lib/commonlibsse-ng` | CommonLibSSE-NG submodule (added by `scripts/setup.sh`) |
-
-## Build (Linux host, cross-compile)
-
-```bash
-scripts/setup.sh   # one-time: checks tools, adds submodule, xwin sysroot, vcpkg
-scripts/build.sh   # native tests + BeyondMastery.dll
-```
-
-The first build compiles CommonLibSSE-NG and all vcpkg dependencies and takes a while.
-
-Native tests only: `scripts/test.sh`
-
-A cross-compiled DLL can still crash in-game on ABI/layout mismatches the compiler can't see. Always test in-game.
-
-## Install (testing)
-
-Copy `build/release/BeyondMastery.dll` to `Data/SKSE/Plugins/`. Requires SKSE64 and Address Library for SKSE Plugins.
+Building, testing and the architecture: [docs/development.md](docs/development.md).
 
 ## License
 

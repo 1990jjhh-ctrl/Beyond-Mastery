@@ -180,7 +180,7 @@ All engine-side via CommonLibSSE-NG:
 
 | Need | API |
 |---|---|
-| Perk points | `PlayerCharacter::perkCount` (uint8, max 255). Layout changed at 1.6.629 — reach it only through NG's runtime accessor (CLAUDE.md) |
+| Perk points | `PlayerCharacter::perkCount` (uint8, max 255). Layout changed at 1.6.629 — reach it only through NG's runtime accessor (development.md, "Working on hooks") |
 | Dragon souls | actor value `ActorValue::kDragonSouls` |
 | Filled black soul gems | inventory scan: `TESSoulGem` with soul level Grand and `canHoldNPCSoul`, filled via form or `ExtraSoul`. The Black Star: empty the soul, keep the item |
 | Skill level / XP state | `PlayerCharacter::skills->data->skills[i]` (`level`, `xp`, `levelThreshold`) |

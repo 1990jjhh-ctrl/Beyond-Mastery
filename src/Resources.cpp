@@ -88,7 +88,7 @@ namespace BM::Resources
 		}
 
 		// perkCount moves at 1.6.629 and again at 1.7.99; only NG's runtime
-		// accessor knows where (CLAUDE.md, "Working on hooks").
+		// accessor knows where (docs/development.md, "Working on hooks").
 		holdings.perks = player->GetGameStatsData().perkCount;
 
 		const auto souls = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kDragonSouls);

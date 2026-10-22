@@ -1,0 +1,114 @@
+# Development
+
+How Beyond Mastery is built, tested and put together. For what the mod does and its current status, see [README.md](../README.md).
+
+## Contract documents
+
+Read these before changing behavior:
+
+- [PRD.md](../PRD.md) — the approved requirements, numbered `FR-n`. Code and tests cite these IDs in comments, so keep the citations accurate when you change either side.
+- [hook-points.md](hook-points.md) — which engine function each requirement needs, with Address Library IDs, byte offsets and a confidence rating per site. §9a has the verification table.
+- [superpowers/plans/](superpowers/plans/) — the implementation plans, with the reasoning behind what is done and what is deliberately left out.
+
+## Build
+
+Development happens on a Linux host. The DLL is cross-compiled with clang-cl and lld-link against an xwin MSVC sysroot.
+
+```bash
+scripts/setup.sh    # one-time: tool check, CommonLibSSE-NG submodule, llvm-mingw, xwin sysroot, vcpkg
+scripts/test.sh     # native tests only: fast, no cross-compiler needed
+scripts/build.sh    # configure, run test.sh, build BeyondMastery.dll, check its runtime imports
+scripts/format.sh   # clang-format in place; --check only reports (also VS Code tasks "format: check/fix")
+```
+
+`setup.sh` prints three environment variables, `VCPKG_ROOT`, `XWIN_SYSROOT` and `LLVM_MINGW_BIN`. Export them before `build.sh` will work. New shells don't inherit them.
+
+The first build compiles CommonLibSSE-NG and every vcpkg port, so it takes a long time. Later builds are incremental, via Ninja in `build/release/`. There is one CMake preset, `linux-clangcl-release`:
+
+```bash
+cmake --preset linux-clangcl-release && cmake --build --preset release
+```
+
+The plugin links the C++ runtime **statically** (`/MT`), through the overlay triplet `cmake/triplets/x64-windows-clangcl-static.cmake`. Do not switch back to `/MD`. The player's `msvcp140.dll` can be arbitrarily old: the first in-game run met the 2016 runtime in the Proton prefix, and STL 14.40+ `std::mutex` faults on its first lock against it. `scripts/check_runtime_deps.py` fails the build if `msvcp140` or `vcruntime140` ever reappears in the import table.
+
+To install a test build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/Plugins/`. Do it only while the game is closed. The log is written to `Documents/My Games/Skyrim Special Edition/SKSE/BeyondMastery.log`.
+
+## Tests
+
+The C++ tests in `tests/` are self-contained binaries with `CHECK`/`CHECK_EQ`/`CHECK_NEAR` macros and a hand-written `main()`. There is no test framework. `scripts/test.sh` compiles each one with `c++ -std=c++20 -Wall -Wextra -Werror -I src`, entirely outside CMake. To add a test, add its name to that script's loop. The Python tests run under stdlib `unittest`.
+
+| Test | Covers |
+|---|---|
+| `test_curves` | the math in `src/Curves.h` |
+| `test_hooksites` | the site table and the runtime gate in `src/HookSites.h` |
+| `test_patterns` | byte-signature matching in `src/Patterns.h` |
+| `test_stubs` | the hand-written trampolines in `src/Stubs.h`, **emitted with xbyak and inspected**: frame arithmetic, registers, budget. It needs the xbyak headers from the vcpkg install, which is why `build.sh` configures before it tests. |
+| `test_verify_sites.py` | Address Library parsing and site verification against the real `SkyrimSE.exe`; skipped when the exe is absent |
+| `test_runtime_deps.py` | the build gate that keeps the plugin off the player's C++ runtime |
+
+To run a single test, build and run it directly:
+
+```bash
+c++ -std=c++20 -I src tests/test_curves.cpp -o build/native/test_curves && build/native/test_curves
+```
+
+These tests are the only automated layer, and they can only cover the game-free headers: `Curves.h`, `HookSites.h`, `Patterns.h` and `Stubs.h`. Everything else needs the game. A cross-compiled DLL can also crash in-game on ABI or layout mismatches the compiler cannot see, so **in-game testing is mandatory** before claiming a change works.
+
+## Layout
+
+| Path | Content |
+|---|---|
+| `src/Curves.h` | Pure math: costs, gates and limits, gem planning, XP factor, form A/B curves |
+| `src/HookSites.h` | Every patch site: Address Library IDs, offsets and byte patterns per runtime, plus the runtime gate |
+| `src/Patterns.h` | Byte-signature matching |
+| `src/Stubs.h` | The hand-written xbyak trampolines |
+| `src/Hooks.*` | Resolves and checks every site, installs the hooks, and holds the cap and XP-gain callees |
+| `src/Menu.*` | The Legendary menu: Reset Skill, Upgrade, Cancel |
+| `src/Resources.*` | Reads and spends perks, dragon souls and filled black soul gems |
+| `src/State.*` | Per-skill caps and paid gates, with co-save serialization |
+| `src/Skills.h` | Skill ↔ actor value mapping, and the scaling form per skill |
+| `src/Config.*` | INI settings |
+| `src/main.cpp` | SKSE entry point |
+| `tests/` | Native unit tests |
+| `scripts/` | Setup, build, test, format, site verification, runtime-import gate |
+| `lib/commonlibsse-ng` | CommonLibSSE-NG submodule |
+
+## Architecture
+
+### Game-free core
+
+`src/Curves.h`, `HookSites.h`, `Patterns.h` and `Stubs.h` are header-only, so `scripts/test.sh` can compile them standalone. Keep them free of `RE/`, `SKSE/` and `PCH.h` includes and of C++23-only features (`Stubs.h` may use xbyak). The plugin itself builds as C++23 with `src/PCH.h` force-included. **New math goes in `Curves.h`, with a test, not inline in a hook.**
+
+`PowerDecayFormula` deliberately offers both `Factor()`, for computing the value ourselves, and `EffectiveSkill()`, which inverts the vanilla formula so the engine computes the right value from a faked skill. Which one a hook uses depends on whether it replaces the engine's calculation or feeds it a remapped skill.
+
+### Two scaling mechanisms (PRD §6.9, hook-points.md §5)
+
+Instead of one hook per skill-dependent formula, **one hook on the player's `GetActorValue`** returns a remapped effective skill `s_eff` for skills above 100. `src/Skills.h` maps each of the 18 skills to its `Scaling` form (`kSqrt`, `kSpellCost` or `kBarter`), and `ScalingOf()` is the single place that decides.
+
+Consequences:
+
+- Every other reader of the player's skill also sees `s_eff`: Papyrus, perk conditions and other mods. The values stay ≥ 100, so vanilla perk requirements still pass.
+- The skills menu must have the remap switched off while it builds its list (FR-29). That is why the menu's update function gets a second hook.
+- Magic skills and Enchanting charge cost are clamped at 100 inside the engine's own formulas. Those clamps must be patched out, or form B has no effect.
+- Enchanting is the exception to the one-hook rule. Its charge-per-use call is replaced and computed from the **real** skill (FR-30), while its magnitude goes through the normal `s_eff` path.
+- Barter (FR-26, hook-points.md §6) is unresolved: confidence L, and no reference implementation. It needs reverse engineering before it can be built.
+
+### Plugin units
+
+- `main.cpp`: the `SKSEPluginLoad` entry point. It runs init, the runtime gate, config load and serialization registration, and sets up a messaging listener. That listener detects conflicting SKSE plugins at `kPostLoad` and notifies the player once at `kDataLoaded` (FR-20).
+- `Config`: a singleton read from `Data/SKSE/Plugins/BeyondMastery.ini` via SimpleIni. `Load()` validates and clamps every value, then **writes the whole file back** so that new keys appear for users after an update. A new setting therefore goes in both the read block and the write-back block, with its comment string.
+- `State`: a singleton holding each skill's cap and paid gates. It persists in the SKSE co-save under unique ID `'BMST'`, as record `'CAPS'` v1 and record `'GATE'` v1. The loader is defensive by contract (FR-22): an unknown record, a wrong version or length, or an implausible value falls back to 100 rather than failing. A save without a `GATE` record gets its gates derived from its caps. Changing a record's layout means bumping its version and handling the old one in `OnLoad`.
+- `Menu`: replaces the call that builds vanilla's Legendary box (hook-points.md §7.1). Reset Skill hands control back to the vanilla callback, so vanilla's second confirmation still appears (FR-31).
+
+## Working on hooks
+
+- Resolve addresses through Address Library IDs only, never hardcoded offsets (PRD §7). SE and AE IDs differ, and they often need separate wrappers because the surrounding instructions differ.
+- Check the byte signature at every patch site before writing. On a mismatch, log and skip rather than patching blind. A failed signature check is also the second signal for conflict detection (hook-points.md §8).
+- Don't install a hook that the current config makes a no-op. Examples: the XP-gain hook at the default `f = 1.0`, and the character-XP hook while `bClampCharXPAbove100` is false. Fewer hooks means fewer conflicts.
+- Treat IDs and offsets from hook-points.md as *facts about the binary to re-verify*, not as working code. The Rust uncapper referenced there has no license file, so nothing may be copied from it.
+- Derive formula constants from the disassembly, or from GMSTs read at runtime, not from UESP values.
+- Reach any member of a game structure whose layout differs between runtimes through CommonLibSSE-NG's runtime accessors: `RUNTIME_*_ACCESSOR*` (e.g. `AsActorValueOwner()`), `GetXRuntimeData()` or `REL::RelocateMember*`. Never use a hardcoded offset or a direct member. The plugin declares `StructCompatibility::Independent`, and that claim only holds because one binary resolves every such offset from the running game's version.
+
+## License constraint
+
+The project is GPL-3.0-or-later (see [README.md](../README.md#license)), and its source must be distributable. Don't add dependencies with incompatible licenses.

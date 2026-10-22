@@ -67,7 +67,7 @@ set(SOURCES
 # would be the wrong declaration: it cannot describe a binary spanning 629.
 #
 # It stays true only while every runtime-variant member is reached through NG's
-# runtime accessors -- see "Working on hooks" in CLAUDE.md.
+# runtime accessors -- see "Working on hooks" in docs/development.md.
 add_commonlibsse_plugin(
 	${PROJECT_NAME}
 	NAME "BeyondMastery"
