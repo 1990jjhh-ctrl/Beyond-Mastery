@@ -29,7 +29,8 @@ static int g_failures = 0;
 
 #define CHECK_EQ(a, b)                                                                \
 	do {                                                                              \
-		const auto _a = (a), _b = (b);                                                \
+		const auto _a = (a);                                                          \
+		const auto _b = (b);                                                          \
 		if (!(_a == _b)) {                                                            \
 			std::printf("FAIL %s:%d: %s = %g, expected %g\n", __FILE__, __LINE__, #a, \
 				static_cast<double>(_a), static_cast<double>(_b));                    \
@@ -219,8 +220,89 @@ static void TestPlausibleCap()
 	CHECK(!IsPlausibleCap(65530));  // garbage that is still a multiple of 10
 }
 
+static void TestLimit()
+{
+	CHECK_EQ(Limit(100, 0), 100);
+	CHECK_EQ(Limit(110, 1), 110);
+	CHECK_EQ(Limit(250, 0), 100);  // after Reset Skill: every gate unpaid
+	CHECK_EQ(Limit(250, 1), 200);
+	CHECK_EQ(Limit(250, 2), 250);
+	CHECK_EQ(Limit(250, 9), 250);  // excess gates never lift the limit past the cap
+}
+
+static void TestGatesNeededFor()
+{
+	// Migration default: a cap bought before gates recurred stays fully reachable.
+	CHECK_EQ(GatesNeededFor(100), 0);
+	CHECK_EQ(GatesNeededFor(110), 1);
+	CHECK_EQ(GatesNeededFor(200), 1);
+	CHECK_EQ(GatesNeededFor(210), 2);
+	CHECK_EQ(GatesNeededFor(300), 2);
+	for (std::uint16_t c = 100; c <= 1000; c += 10)
+		CHECK_EQ(Limit(c, GatesNeededFor(c)), c);
+}
+
+static void TestUpgradeFor()
+{
+	// PRD success criterion 1: 100 -> 110 costs 1 perk + 10 dragon souls.
+	auto u = UpgradeFor(100, 0);
+	CHECK(u.kind == UpgradeKind::kStepAndGate);
+	CHECK((u.cost == StepCost{ 1, 0, 10 }));
+	CHECK_EQ(u.newCap, 110);
+	CHECK_EQ(u.newGatesPaid, 1);
+	// Mid-tier step: perk only.
+	u = UpgradeFor(110, 1);
+	CHECK(u.kind == UpgradeKind::kStep);
+	CHECK((u.cost == StepCost{ 1, 0, 0 }));
+	// PRD success criterion 2: 200 -> 210 costs 1 perk, 1 gem, 20 souls.
+	u = UpgradeFor(200, 1);
+	CHECK(u.kind == UpgradeKind::kStepAndGate);
+	CHECK((u.cost == StepCost{ 1, 1, 20 }));
+	CHECK_EQ(u.newGatesPaid, 2);
+	// Re-climb after Reset Skill at cap 250: gates only, cap unchanged (PRD §6.2).
+	u = UpgradeFor(250, 0);
+	CHECK(u.kind == UpgradeKind::kGate);
+	CHECK((u.cost == StepCost{ 0, 0, 10 }));
+	CHECK_EQ(u.newCap, 250);
+	CHECK_EQ(u.newGatesPaid, 1);
+	u = UpgradeFor(250, 1);
+	CHECK((u.cost == StepCost{ 0, 0, 20 }));
+	// Re-climb finished: the next upgrade is an ordinary step again.
+	u = UpgradeFor(250, 2);
+	CHECK(u.kind == UpgradeKind::kStep);
+	CHECK((u.cost == StepCost{ 1, 1, 0 }));
+	CHECK_EQ(u.newCap, 260);
+}
+
+static void TestPlanGems()
+{
+	// FR-6/FR-7: The Black Star counts as one gem and is the player's choice.
+	CHECK(!PlanGems(2, 1, false, false));  // short
+	CHECK((*PlanGems(2, 2, false, false)).consumable == 2);
+	auto p = *PlanGems(2, 1, true, true);  // star + one consumable
+	CHECK(p.blackStar && p.consumable == 1);
+	p = *PlanGems(2, 5, true, false);  // keep the star
+	CHECK(!p.blackStar && p.consumable == 2);
+	CHECK(!PlanGems(2, 0, true, true));                      // star alone covers one
+	CHECK((*PlanGems(0, 0, false, false)).consumable == 0);  // tier 1: no gems
+}
+
+static void TestCapRaisable()
+{
+	// A cap the co-save loader would reject must never be created.
+	CHECK(CapRaisable(100));
+	CHECK(CapRaisable(kMaxPlausibleCap - 10));
+	CHECK(!CapRaisable(kMaxPlausibleCap));
+	CHECK(IsPlausibleCap(kMaxPlausibleCap));  // the last raise still loads
+}
+
 int main()
 {
+	TestLimit();
+	TestGatesNeededFor();
+	TestUpgradeFor();
+	TestPlanGems();
+	TestCapRaisable();
 	TestCosts();
 	TestPlausibleCap();
 	TestXPThreshold();

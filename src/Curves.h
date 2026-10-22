@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 
 namespace BM::Curves
 {
@@ -91,6 +92,94 @@ namespace BM::Curves
 	[[nodiscard]] inline bool AtCap(double a_level, std::uint16_t a_cap) noexcept
 	{
 		return a_level >= static_cast<double>(a_cap);
+	}
+
+	// ---------------------------------------------------------------------
+	// Limit, gates and upgrades (PRD v1.4: §5, §6.2, FR-2, FR-13)
+	// ---------------------------------------------------------------------
+
+	// The level a skill can reach right now: its cap, or the first gate not yet
+	// paid this climb, whichever is lower. Equal to the cap until Reset Skill
+	// clears the paid gates.
+	[[nodiscard]] inline std::uint16_t Limit(std::uint16_t a_cap, std::uint8_t a_gatesPaid) noexcept
+	{
+		const std::uint32_t gateLimit = 100u * (1u + a_gatesPaid);
+		return static_cast<std::uint16_t>(std::min<std::uint32_t>(a_cap, gateLimit));
+	}
+
+	// Gates a cap has passed, ceil((cap - 100) / 100). Also the default for a
+	// save written before gates recurred: with this many paid, Limit == cap, so
+	// a cap bought earlier is never suddenly locked at the next 100.
+	[[nodiscard]] inline std::uint8_t GatesNeededFor(std::uint16_t a_cap) noexcept
+	{
+		return a_cap <= 100 ? std::uint8_t{ 0 } : static_cast<std::uint8_t>((a_cap - 100 + 99) / 100);
+	}
+
+	enum class UpgradeKind : std::uint8_t
+	{
+		kGate,        // pay an unpaid gate below the cap; the cap is unchanged
+		kStep,        // raise the cap by 10
+		kStepAndGate  // raise the cap across a 100-level boundary not yet paid
+	};
+
+	struct Upgrade
+	{
+		UpgradeKind   kind{ UpgradeKind::kStep };
+		StepCost      cost{};
+		std::uint16_t newCap{ 0 };
+		std::uint8_t  newGatesPaid{ 0 };
+	};
+
+	// What Upgrade does for a skill standing at its limit (FR-2).
+	[[nodiscard]] inline Upgrade UpgradeFor(std::uint16_t a_cap, std::uint8_t a_gatesPaid) noexcept
+	{
+		const auto limit = Limit(a_cap, a_gatesPaid);
+		if (limit < a_cap) {
+			const std::uint32_t gate = limit / 100u;
+			return { UpgradeKind::kGate, { 0, 0, 10u * gate }, a_cap,
+				static_cast<std::uint8_t>(a_gatesPaid + 1) };
+		}
+
+		// The cap is binding: an ordinary step, plus the gate's dragon souls when
+		// the step leaves a 100-level boundary still unpaid this climb.
+		const auto          step = CostOfNextStep(a_cap);
+		Upgrade             upgrade{ UpgradeKind::kStep, { step.perks, step.blackSoulGems, 0 },
+			static_cast<std::uint16_t>(a_cap + 10), a_gatesPaid };
+		const std::uint32_t gate = a_cap / 100u;
+		if (a_cap % 100u == 0 && a_gatesPaid < gate) {
+			upgrade.kind = UpgradeKind::kStepAndGate;
+			upgrade.cost.dragonSouls = 10u * gate;
+			upgrade.newGatesPaid = static_cast<std::uint8_t>(gate);
+		}
+		return upgrade;
+	}
+
+	// Which filled black soul gems pay for a_needed (FR-6, FR-7). The Black Star
+	// counts as one gem and is used only when the player chooses to; it is
+	// emptied rather than consumed, so it is never spent without asking.
+	struct GemPlan
+	{
+		std::uint32_t consumable{ 0 };
+		bool          blackStar{ false };
+	};
+
+	[[nodiscard]] inline std::optional<GemPlan> PlanGems(std::uint32_t a_needed, std::uint32_t a_consumable,
+		bool a_blackStarFilled, bool a_useBlackStar) noexcept
+	{
+		const bool          star = a_useBlackStar && a_blackStarFilled && a_needed > 0;
+		const std::uint32_t fromConsumable = a_needed - (star ? 1u : 0u);
+		if (fromConsumable > a_consumable) {
+			return std::nullopt;
+		}
+		return GemPlan{ fromConsumable, star };
+	}
+
+	// FR-4 puts no limit on the cap, but the co-save loader resets any cap above
+	// kMaxPlausibleCap to 100, so a raise past it would be lost on the next
+	// reload. Upgrade stops there instead.
+	[[nodiscard]] inline bool CapRaisable(std::uint16_t a_cap) noexcept
+	{
+		return a_cap + 10u <= kMaxPlausibleCap;
 	}
 
 	// ---------------------------------------------------------------------
