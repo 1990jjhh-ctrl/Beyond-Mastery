@@ -7,8 +7,14 @@ namespace BM
 	namespace
 	{
 		constexpr std::uint32_t kUniqueID = 'BMST';
+
 		constexpr std::uint32_t kCapsRecord = 'CAPS';
 		constexpr std::uint32_t kCapsVersion = 1;
+
+		// Separate from CAPS rather than a CAPS version 2, so saves written
+		// before gates recurred still load their caps untouched.
+		constexpr std::uint32_t kGatesRecord = 'GATE';
+		constexpr std::uint32_t kGatesVersion = 1;
 	}
 
 	State& State::Get() noexcept
@@ -28,9 +34,12 @@ namespace BM
 
 	void State::OnSave(SKSE::SerializationInterface* a_intfc)
 	{
-		const auto& caps = Get()._caps;
-		if (!a_intfc->WriteRecord(kCapsRecord, kCapsVersion, caps)) {
+		const auto& state = Get();
+		if (!a_intfc->WriteRecord(kCapsRecord, kCapsVersion, state._caps)) {
 			logger::error("Failed to write CAPS record");
+		}
+		if (!a_intfc->WriteRecord(kGatesRecord, kGatesVersion, state._gatesPaid)) {
+			logger::error("Failed to write GATE record");
 		}
 	}
 
@@ -39,35 +48,61 @@ namespace BM
 		auto& state = Get();
 		state.Reset();
 
+		// Gates are reconciled with the caps only after every record is read,
+		// so the order the records arrive in never matters.
+		decltype(state._gatesPaid) loadedGates{};
+		bool                       gatesLoaded = false;
+
 		std::uint32_t type = 0;
 		std::uint32_t version = 0;
 		std::uint32_t length = 0;
 		while (a_intfc->GetNextRecordInfo(type, version, length)) {
-			if (type != kCapsRecord) {
+			if (type == kCapsRecord) {
+				if (version != kCapsVersion || length != sizeof(state._caps)) {
+					logger::error("CAPS record version {} / length {} unsupported, caps reset to 100", version, length);
+					continue;
+				}
+				decltype(state._caps) caps{};
+				if (a_intfc->ReadRecordData(caps) != sizeof(caps)) {
+					logger::error("CAPS record truncated, caps reset to 100");
+					continue;
+				}
+				for (std::size_t i = 0; i < caps.size(); ++i) {
+					// Caps are multiples of 10, at least 100 and at most
+					// kMaxPlausibleCap; anything else is damaged data, not a cap.
+					const auto c = caps[i];
+					state._caps[i] = Curves::IsPlausibleCap(c) ? c : kDefaultCap;
+				}
+			} else if (type == kGatesRecord) {
+				if (version != kGatesVersion || length != sizeof(loadedGates)) {
+					logger::error("GATE record version {} / length {} unsupported, gates derived from caps", version, length);
+					continue;
+				}
+				if (a_intfc->ReadRecordData(loadedGates) != sizeof(loadedGates)) {
+					logger::error("GATE record truncated, gates derived from caps");
+					continue;
+				}
+				gatesLoaded = true;
+			} else {
 				logger::warn("Unknown co-save record {:08X}, skipped", type);
-				continue;
-			}
-			if (version != kCapsVersion || length != sizeof(state._caps)) {
-				logger::error("CAPS record version {} / length {} unsupported, caps reset to 100", version, length);
-				continue;
-			}
-			decltype(state._caps) caps{};
-			if (a_intfc->ReadRecordData(caps) != sizeof(caps)) {
-				logger::error("CAPS record truncated, caps reset to 100");
-				continue;
-			}
-			for (std::size_t i = 0; i < caps.size(); ++i) {
-				// Sanity: caps are multiples of 10, at least 100, and not past
-				// kMaxCap. Anything else is damaged data, not a cap.
-				const auto c = caps[i];
-				state._caps[i] = Curves::IsPlausibleCap(c) ? c : kDefaultCap;
 			}
 		}
 
 		for (std::size_t i = 0; i < state._caps.size(); ++i) {
-			if (state._caps[i] != kDefaultCap) {
-				logger::info("Loaded cap: skill {} = {}", i, state._caps[i]);
+			const auto needed = Curves::GatesNeededFor(state._caps[i]);
+			// Without a GATE record (a save from before gates recurred), every
+			// gate below the cap counts as paid, so the cap stays reachable. With
+			// one, more gates than the cap has passed can never be needed, which
+			// also makes a damaged value harmless.
+			state._gatesPaid[i] = gatesLoaded ? std::min(loadedGates[i], needed) : needed;
+
+			if (state._caps[i] != kDefaultCap || state._gatesPaid[i] != 0) {
+				logger::info("Loaded skill {}: cap {}, gates paid {}, limit {}", i, state._caps[i],
+					state._gatesPaid[i], Curves::Limit(state._caps[i], state._gatesPaid[i]));
 			}
+		}
+		if (!gatesLoaded) {
+			logger::info("No GATE record: gates derived from caps (save predates recurring gates)");
 		}
 	}
 

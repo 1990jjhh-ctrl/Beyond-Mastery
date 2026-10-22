@@ -134,7 +134,7 @@ namespace BM::Hooks
 
 	float GetSkillCap(RE::ActorValue a_av) noexcept
 	{
-		return static_cast<float>(State::Get().CapOf(a_av));
+		return static_cast<float>(State::Get().LimitOf(a_av));
 	}
 
 	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_improveMult, float a_points,

@@ -37,9 +37,10 @@ namespace BM::Hooks
 	// RE::DebugMessageBox, which resolves several of its own.
 	[[nodiscard]] bool AddressLibraryMissing() noexcept;
 
-	// Callee of the cap trampoline: the cap for a_av, or the vanilla 100 for
-	// anything that is not a skill. Replaces the constant 100.0 the XP routine
-	// would otherwise load (FR-2, FR-8).
+	// Callee of the cap trampoline: the limit for a_av (PRD §5) -- the cap, or
+	// the first gate not yet paid this climb -- or the vanilla 100 for anything
+	// that is not a skill. Replaces the constant 100.0 the XP routine would
+	// otherwise load (FR-2, FR-8, FR-13).
 	float GetSkillCap(RE::ActorValue a_av) noexcept;
 
 	// True once the cap site has actually been patched.
