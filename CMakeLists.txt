@@ -50,6 +50,8 @@ set(SOURCES
 	src/Config.cpp
 	src/State.h
 	src/State.cpp
+	src/Resources.h
+	src/Resources.cpp
 	src/main.cpp
 )
 
