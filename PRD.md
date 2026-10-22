@@ -1,7 +1,7 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.3 — Approved** (2026-10-21; v1.3 adds 1.7.x to the target runtimes)
-Date: 2026-10-21
+Status: **v1.4 — Approved** (2026-10-22; v1.4 moves the menu onto vanilla Legendary and makes dragon-soul gates recurring)
+Date: 2026-10-22
 Owner: Joel Hirsbrunner
 
 ---
@@ -27,13 +27,16 @@ Skill effects above 100 must keep rewarding the player but never run away: every
 ## 4. Target users & platform
 
 - PC players on Skyrim **SE 1.5.97**, **AE 1.6.x** and **1.7.x**, using SKSE64 and Address Library.
-- Single DLL via **CommonLibSSE-NG**, plus a small ESP/ESL for the power, messages, and globals.
+- A single DLL via **CommonLibSSE-NG**. No plugin file (ESP/ESL): the entry point is vanilla Legendary (FR-14).
 
 ## 5. Definitions
 
 | Term | Meaning |
 |---|---|
-| Cap | Maximum level a skill can reach through XP. Default 100. Raised in +10 steps. |
+| Cap | The highest level a skill has been upgraded to. Default 100. Raised in +10 steps; survives Reset Skill. |
+| Gate *T* | The boundary at level `T × 100` (T ≥ 1). Passing it costs `10 × T` dragon souls, once per climb. |
+| Climb | The span from one Reset Skill of a skill to the next (or from the start of the game to the first). |
+| Limit | The level a skill can currently reach through XP: `min(cap, 100 × (1 + gates paid this climb))`. Equal to the cap until a Reset Skill clears the paid gates. |
 | Step *n* | The *n*-th cap increase of a skill, counted continuously: step 1 = 100→110, step 10 = 190→200, step 11 = 200→210. |
 | Tier *T* | `T = floor(currentCap / 100)`. Cap 100–190 = T1, 200–290 = T2, … |
 | Filled black soul gem | A Black Soul Gem or The Black Star containing a black (humanoid) soul. |
@@ -43,26 +46,32 @@ Skill effects above 100 must keep rewarding the player but never run away: every
 ### 6.1 Cap raising
 
 - **FR-1** Each of the 18 skills has an independent cap, default 100, stored persistently in the save (SKSE co-save).
-- **FR-2** A cap can only be raised when the skill's current base level **equals** its current cap.
+- **FR-2** Upgrade is available only when the skill's base level **equals** its limit. It raises the limit by one of two means:
+  - limit < cap — an unpaid gate is binding: Upgrade pays that gate. The cap is unchanged.
+  - limit = cap — Upgrade raises the cap (FR-3), and also pays the gate when the raise crosses a 100-level boundary.
 - **FR-3** Each raise increases the cap by exactly 10.
 - **FR-4** No upper limit on the cap (soft cap through cost and XP curve).
 
-### 6.2 Cost of step *n* (raising from cap *C* to *C*+10)
+### 6.2 Costs
 
-With `T = floor(C / 100)`. The step number `n` identifies a step but is no
-longer an input to its cost:
+Two kinds of cost. A **step** raises the cap from *C* to *C*+10, with
+`T = floor(C / 100)`; the step number `n` identifies a step but is no longer an
+input to its cost. A **gate** is paid to pass level `T × 100`, once per climb.
 
 | Resource | Cost | When |
 |---|---|---|
 | Perk points | `1` | every step |
 | Filled black soul gems | `T − 1` | every step |
-| Dragon souls | `10 × T` | only on the first step of a tier (C = T × 100), per skill |
+| Dragon souls | `10 × T` | each gate *T*, once per climb (§5) |
+
+An Upgrade that raises the cap across a boundary (`C = T × 100`) in a climb where
+gate *T* is still unpaid costs both: the step and the gate.
 
 - **FR-5** All costs of a step are checked before anything is deducted. If any resource is missing, nothing is consumed and the menu shows what is missing.
 - **FR-6** Black soul gem consumption: consumable filled Black Soul Gems are removed from the inventory. The Black Star counts as one gem; its soul is emptied, the item is kept.
 - **FR-7** If the player has more filled black soul gems than needed (consumable gems and/or The Black Star), the menu lets the player choose which ones to use.
 
-Cost examples (one skill):
+Cost examples, first climb (one skill, never Reset):
 
 | Step | Cap | Perks | Gems | Dragon souls |
 |---|---|---|---|---|
@@ -76,10 +85,18 @@ Cost examples (one skill):
 | 21 | 300→310 | 1 | 2 | 30 |
 | **Tier 3 total** | 300→400 | **10** | **20** | **30** |
 
+Re-climb after Reset Skill, cap 250: the skill retrains from 15 and stops at
+100 and again at 200 until each gate is paid — 10 + 20 = 30 dragon souls, and
+nothing else, since the cap itself is already bought.
+
 Rationale: an escalating perk cost made grind the binding constraint and put the
 cost beyond what `PlayerCharacter::perkCount` can even hold (a `uint8`) past step
 255. At a flat 1 perk per step the limiting factors are character level
-progression and the two tier-scaled resources above.
+progression and the two tier-scaled resources above. Dragon-soul gates recur
+because Reset Skill on a raised cap is otherwise a free loop: drop to 15,
+retrain past 100, collect character XP all the way. Recurring gates make each
+loop cost something, and give dragon souls a lasting use once a character's
+shouts are unlocked; dragons respawn, so the cost never locks a player out.
 
 ### 6.3 Leveling above 100
 
@@ -88,17 +105,18 @@ progression and the two tier-scaled resources above.
 - **FR-10** XP accumulation must remain correct at large thresholds. If float precision loss becomes relevant (threshold ≳ 1.6 × 10⁷), the plugin tracks per-skill progress internally as `double`.
 - **FR-11** Character XP per skill level-up above 100 scales as in vanilla (`fXPPerSkillRank × new skill level`), not clamped. Optional clamp to the level-100 value via INI (`bClampCharXPAbove100`, default off).
 
-### 6.4 Legendary
+### 6.4 Reset Skill (vanilla Legendary)
 
-- **FR-12** Making a skill Legendary does **not** reset its raised cap. The skill level resets to 15 as in vanilla and can be re-trained up to the persisted cap.
-- **FR-13** Paid dragon-soul tier unlocks remain in effect after Legendary (they are tied to the cap, which persists).
+- **FR-12** Reset Skill does **not** reset the cap. The skill level resets to 15 as in vanilla and can be re-trained up to the cap, paying each gate again (FR-13).
+- **FR-13** Reset Skill clears the gates paid during the climb. On the next climb each gate below the cap must be paid again (`10 × T` dragon souls); perks and gems already spent on the cap are not charged again.
 
 ### 6.5 Interaction / UI
 
-- **FR-14** The mod adds a **lesser power** ("Beyond Mastery"), granted on load.
-- **FR-15** Casting it opens a menu listing only skills where `level == cap`, with the next cap and the full cost of the next step.
-- **FR-16** Selecting a skill shows a confirmation with cost and current resources (including gem choice per FR-7); confirming applies the step.
-- **FR-17** Works without SkyUI/MCM. Menus use vanilla message boxes (paged if more than 9 options).
+- **FR-14** The entry point is vanilla Legendary. The skill tree's **[Legendary]** prompt is unchanged; pressing it on a skill at level 100 or above opens the Beyond Mastery menu in place of vanilla's confirmation box.
+- **FR-15** The menu offers **Reset Skill**, **Upgrade** and **Cancel** for the selected skill. Upgrade is listed only when the skill's base level equals its limit (FR-2); below the limit the menu names the level still to reach and offers Reset Skill and Cancel.
+- **FR-16** Selecting Upgrade shows the cost of that upgrade and the player's current resources (including the gem choice per FR-7), with **Confirm** and **Back**; confirming applies it. Costs are not shown before Upgrade is selected.
+- **FR-17** Works without SkyUI/MCM. Menus use vanilla message boxes; the skill tree's own UI is not modified.
+- **FR-31** Reset Skill performs vanilla Legendary exactly — level reset to 15, perks refunded — with no further confirmation: choosing it in the menu is the confirmation vanilla's yes/no box asked for.
 
 ### 6.6 Configuration (INI)
 
@@ -172,13 +190,13 @@ Spell cost skill factor, for comparison:
 
 - Requires SKSE64, Address Library for SKSE Plugins, and a CommonLibSSE-NG build covering SE 1.5.97, AE 1.6.x and 1.7.x.
 - Hook locations must be resolved through Address Library IDs (no hardcoded offsets). 1.7.x reuses the AE IDs: `REL::RelocationID` selects the AE ID for every runtime at or above 1.6.317, and the AE IDs, byte offsets and instruction patterns were confirmed unchanged on 1.7.104 (docs/hook-points.md §9a).
-- Plugin record count minimal; ESP flagged as ESL if possible.
+- No plugin file: the entry point is vanilla Legendary (FR-14), so the mod adds no records and takes no load-order slot.
 
 ## 8. Success criteria
 
-1. On SE 1.5.97 and the current AE version: a skill at 100 can be raised to 110 with 1 perk + 10 dragon souls, then trains to 110 through use, then stops.
+1. On SE 1.5.97 and the current AE version: pressing Legendary on a skill at 100 and choosing Upgrade raises its cap to 110 for 1 perk + 10 dragon souls; the skill then trains to 110 through use, then stops.
 2. Step 11 (200→210) consumes exactly 1 perk point, 1 filled black soul gem, and 20 dragon souls; failure with any missing resource consumes nothing.
-3. Caps survive save/load and Legendary resets.
+3. Caps survive save/load and Reset Skill. After Reset Skill, the retrained skill stops at each unpaid gate (100, 200, …) until Upgrade pays it.
 4. Character XP from a skill-up at 150 is 1.5× that of a skill-up at 100 (clamp off), and equal to it with clamp on.
 5. No crash or log error across 1 h of play with a typical 200+ plugin load order.
 6. With another uncapper installed, the warning appears exactly once per session.
@@ -186,12 +204,13 @@ Spell cost skill factor, for comparison:
 8. At Destruction 400, the spell cost skill factor is 0.29 ± 0.01, never below 0.25 at any skill.
 9. At Speech 1000 with all barter perks and Fortify Barter, buy price ≥ 1.2 × sell price for any item.
 10. At Enchanting 1000, a weapon enchantment still costs charge per hit (skill factor ≥ 0.146), and the item's number of uses is finite.
+11. Reset Skill is indistinguishable from vanilla Legendary: level 15, perks refunded, one confirmation step.
 
 ## 9. Risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Perk cost is flat at 1 per step, so dragon souls and filled black soul gems are the only resource gates | Cap raises may be too cheap once souls and gems are stockpiled | Tier entry still costs 10 × T dragon souls and every step past tier 1 costs T − 1 gems, both content-gated; character level-up cost grows steeply. Revisit after playtesting |
+| Perk cost is flat at 1 per step, so dragon souls and filled black soul gems are the only resource gates | Cap raises may be too cheap once souls and gems are stockpiled | Every gate costs 10 × T dragon souls once per climb, so each Reset Skill loop above 100 is paid again; every step past tier 1 costs T − 1 gems; character level-up cost grows steeply. Revisit after playtesting |
 | Skill-dependent formulas are spread across many engine functions and perk entry points; no central "skill → effect" function | Each formula needs its own hook; missed one = vanilla linear scaling | Explicit formula list (FR-24); per-formula test at 100/101/200 |
 | Some formulas may not read the skill value directly (e.g. via game settings or perk entry points) | Form A/B harder to inject | Identify per formula during reverse engineering; fall back to post-processing the result |
 | Vanilla formulas on UESP may be inaccurate or unverified for some skills | Wrong f₁₀₀ / slope constants | Derive constants from the disassembly, not wiki values |
@@ -199,6 +218,7 @@ Spell cost skill factor, for comparison:
 | Engine-side clamp lives in several code paths (XP gain, AV set, level-up) | Missed hook = cap not respected | Reverse-engineer and verify all paths; reference existing open-source uncappers |
 | Future game updates move functions | Plugin breaks | Address Library IDs; version check on load |
 | Conflict with other uncappers hooking the same functions | Double hooks, undefined behavior | Detect & warn (FR-20) |
+| Other mods that change Legendary or its confirmation box | Their dialog and ours compete for the same press | Hook the confirmation box itself rather than the skill-tree UI; detect known Legendary mods at load and warn as in FR-20 |
 
 ## 10. Open points
 
@@ -206,5 +226,10 @@ None. Resolved in v0.4:
 
 1. XP scaling above 100: gain factor `f^(T−1)`, f ≤ 1.0 (FR-9).
 2. Gem choice: player chooses (FR-7).
-3. Dragon souls are kept on Legendary (FR-13). They already gate each 100s breakthrough (10 × T, §6.2); no extra sink.
+3. ~~Dragon souls are kept on Legendary (FR-13).~~ Superseded in v1.4: gates recur per climb (FR-13).
+
+Resolved in v1.4:
+
+5. The menu is reached through vanilla Legendary, not a lesser power (FR-14 … FR-17, FR-31). No plugin file is needed. Costs appear only once Upgrade is selected.
+6. Dragon-soul gates recur: Reset Skill clears them, and the next climb pays each one again (FR-13).
 4. Block, Lockpicking, Pickpocket and Sneak are linear in skill in vanilla → form A (FR-24). Sources: UESP Block, Pickpocket, Sneak, and the Lockpicking talk page (sweet-spot formula unofficial, to verify in disassembly).

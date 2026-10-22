@@ -115,21 +115,48 @@ With form A, Enchanting s_eff reaches 199 at s ≈ 224, so this is reachable in 
 
 Plan: locate the price function in Ghidra via the game settings `fBarterMin` / `fBarterMax` (cross-references to their GMST objects), on SE 1.5.97 and AE. Then either remap Speech through the AVO hook (if unclamped) or hook the price function directly and apply form B plus the 1.2 floor there.
 
-## 7. Cap-raise transaction (FR-5 … FR-7, FR-14 … FR-17)
+## 7. Cap-raise transaction (FR-5 … FR-7, FR-14 … FR-17, FR-31)
 
-All engine-side via CommonLibSSE-NG, no hooks:
+### 7.1 Entry point: vanilla Legendary (PRD v1.4)
+
+Pressing **[Legendary]** in the skill tree makes the engine build a
+`RE::LegendarySkillResetConfirmCallback` and show a yes/no message box with it.
+The callback carries the skill and performs the reset on confirmation:
+
+| Member | Offset | Meaning |
+|---|---|---|
+| `menu` | +0x10 | the `StatsMenu` that raised it |
+| `skill` | +0x1C | the `ActorValue` being made Legendary |
+| `Run(std::uint8_t button)` | vtable slot 1 | performs the reset for the confirming button |
+
+Address Library: vtable `VariantID(269983, 215997, …)`, RTTI `(688914, 396769, …)`;
+size 0x20. Offered at any level ≥ 100 — confirmed in-game on 1.7.104 with
+One-Handed at 110.
+
+The menu replaces that box (FR-14, FR-15): **Reset Skill** delegates to the
+vanilla callback's `Run` with the confirming button, so it stays exactly vanilla
+(FR-31); **Upgrade** runs our transaction instead. Confidence **M**: the callback
+and its vtable are known, but the site that creates and queues the box — where
+its text and buttons must be replaced — has not been located yet. Find it by
+cross-referencing the vtable address before writing the hook.
+
+Nothing in the skill tree's Flash UI is touched (FR-17).
+
+### 7.2 Transaction
+
+All engine-side via CommonLibSSE-NG:
 
 | Need | API |
 |---|---|
-| Perk points | `PlayerCharacter::perkCount` (uint8, max 255) |
+| Perk points | `PlayerCharacter::perkCount` (uint8, max 255). Layout changed at 1.6.629 — reach it only through NG's runtime accessor (CLAUDE.md) |
 | Dragon souls | actor value `ActorValue::kDragonSouls` |
 | Filled black soul gems | inventory scan: `TESSoulGem` with soul level Grand and `canHoldNPCSoul`, filled via form or `ExtraSoul`. The Black Star: empty the soul, keep the item |
 | Skill level / XP state | `PlayerCharacter::skills->data->skills[i]` (`level`, `xp`, `levelThreshold`) |
-| Menu with dynamic text and buttons | `RE::MessageBoxData` with an `IMessageBoxCallback` (body text, button labels and paging all built at runtime) |
-| Lesser power cast | `TESSpellCastEvent` / magic effect apply event for our spell |
-| Persistence | SKSE serialization interface (co-save), record per skill: cap, tiers unlocked |
+| Menu with dynamic text and buttons | `RE::MessageBoxData` with an `IMessageBoxCallback` (body text and button labels built at runtime; at most three buttons, so no paging) |
+| Persistence | SKSE serialization interface (co-save), record per skill: cap, gates paid this climb |
 
-**No Papyrus needed.** The plugin file only needs: one lesser power (SPEL) and one script-less magic effect (MGEF). This can be generated without the Creation Kit (e.g. Mutagen/.NET), keeping the whole toolchain on Linux.
+**No Papyrus and no plugin file.** The lesser power of PRD ≤ v1.3, with its
+SPEL/MGEF records, is gone.
 
 ## 8. Conflict detection (FR-20)
 
