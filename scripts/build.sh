@@ -16,6 +16,11 @@ cmake --preset linux-clangcl-release
 cmake --build --preset release
 
 DLL="build/release/BeyondMastery.dll"
+
+# The plugin must not depend on the player's C++ runtime; fail the build if a
+# dependency or a preset change brings the dynamic CRT back.
+python3 "$ROOT/scripts/check_runtime_deps.py" "$DLL"
+
 file "$DLL"
 echo "Built $DLL"
 echo "Install: copy it to <Skyrim>/Data/SKSE/Plugins/ (or package it for your mod manager)."
