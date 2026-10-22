@@ -135,10 +135,28 @@ One-Handed at 110.
 
 The menu replaces that box (FR-14, FR-15): **Reset Skill** delegates to the
 vanilla callback's `Run` with the confirming button, so it stays exactly vanilla
-(FR-31); **Upgrade** runs our transaction instead. Confidence **M**: the callback
-and its vtable are known, but the site that creates and queues the box — where
-its text and buttons must be replaced — has not been located yet. Find it by
-cross-referencing the vtable address before writing the hook.
+(FR-31); **Upgrade** runs our transaction instead.
+
+Confidence **H (own disassembly)**. Cross-referencing the vtable (every
+`lea reg, [rip+vtable]` in `.text`) finds exactly two construction sites, both in
+`StatsMenu`, both building the callback and passing it straight to one call:
+
+| Site | AE id + off (pattern start) | Address in 1.7.104 | Reads the skill from |
+|---|---|---|---|
+| LegendaryBoxA | 52510 + 0x5E3 | 0x977033 | `StatsMenu + 0x1c0` |
+| LegendaryBoxB | 52520 + 0x25C | 0x9787dc | `StatsMenu + 0x190` |
+
+Both call `MessageBoxMenu::Create(message, callback, 0, 25, 10, buttons)` — id
+`AE_CHECK(1.6.1130, 52270, 442726)` — 15 bytes after the pattern start, so the
+message, the button array and the callback all pass through that one call.
+Replacing it with a `write_call<5>` call-site hook (a typed C++ function of the
+same signature; no hand-written assembly) replaces the box. Both sites verify at
+drift 0 against `versionlib-1-7-104-0.bin` (`scripts/verify_sites.py`).
+
+`Run` (vtable slot 1, `0x982160`) resets only for **button 1**
+(`movzx ebx, dl … cmp bl, 1; jne <return>`), and only after a precondition call
+(`id 82074`) that can make it do nothing. So Reset Skill delegates with `Run(1)`,
+and must check that the level actually dropped before clearing the paid gates.
 
 Nothing in the skill tree's Flash UI is touched (FR-17).
 

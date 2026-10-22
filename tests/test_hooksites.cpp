@@ -82,9 +82,22 @@ static void TestEverySiteVerified()
 		CHECK(s->verified);
 }
 
+static void TestLegendaryBoxSites()
+{
+	using namespace BM::HookSites;
+	CHECK(kAllSites.size() == 11);
+	CHECK(kLegendaryBoxA.ae.id == 52510 && kLegendaryBoxA.ae.offset == 0x5E3);
+	CHECK(kLegendaryBoxB.ae.id == 52520 && kLegendaryBoxB.ae.offset == 0x25C);
+	CHECK(kLegendaryCallOffset == 15);
+	// The call opcode sits exactly kLegendaryCallOffset bytes into each pattern.
+	for (const auto* s : { &kLegendaryBoxA, &kLegendaryBoxB })
+		CHECK(s->patternAE.substr(kLegendaryCallOffset * 3, 2) == "E8");
+}
+
 int main()
 {
 	TestPatternsWellFormed();
+	TestLegendaryBoxSites();
 	TestRuntimeGate();
 	TestEverySiteVerified();
 	if (g_failures == 0)

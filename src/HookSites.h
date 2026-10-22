@@ -187,6 +187,45 @@ namespace BM::HookSites
 		true
 	};
 
+	// --- Legendary box (hook-points.md §7.1, FR-14) --------------------------
+	//
+	// Pressing Legendary in the skill tree makes StatsMenu build a
+	// LegendarySkillResetConfirmCallback and show it through one call to
+	// MessageBoxMenu::Create(message, callback, 0, 25, 10, buttons). Two
+	// StatsMenu functions do this -- two input paths into the same box -- and
+	// both were found by cross-referencing the callback's vtable (AE id 215997)
+	// in SkyrimSE.exe 1.7.104. Replacing that call replaces the box.
+	//
+	// Each pattern is the argument setup and the call itself:
+	//   xor r8d, r8d            ; buttonPressOffset = 0
+	//   lea rdx, [rbp+...]      ; the callback smart pointer
+	//   lea rcx, [rsp+0x58]     ; the message
+	//   call MessageBoxMenu::Create
+	//
+	// AE/1.7.x only: no SE binary was available to find the SE ids, and the
+	// menu is pointless where the cap hook is not installed.
+
+	// Bytes from each pattern's start to its call instruction.
+	inline constexpr std::uint32_t kLegendaryCallOffset = 15;
+
+	inline constexpr Site kLegendaryBoxA{
+		"LegendaryBoxA",
+		{ 0, 0 },
+		{ 52510, 0x5E3 },
+		"",
+		"45 33 C0 48 8D 95 28 01 00 00 48 8D 4C 24 58 E8 ?? ?? ?? ??",
+		true
+	};
+
+	inline constexpr Site kLegendaryBoxB{
+		"LegendaryBoxB",
+		{ 0, 0 },
+		{ 52520, 0x25C },
+		"",
+		"45 33 C0 48 8D 95 08 01 00 00 48 8D 4C 24 58 E8 ?? ?? ?? ??",
+		true
+	};
+
 	// --- Barter (hook-points.md §6) ------------------------------------------
 	// Not located yet. Find via cross-references to fBarterMin / fBarterMax.
 
@@ -200,6 +239,8 @@ namespace BM::HookSites
 		&kCalculateChargePointsPerUse,
 		&kBeginMaxChargeCalculation,
 		&kEndMaxChargeCalculation,
+		&kLegendaryBoxA,
+		&kLegendaryBoxB,
 	};
 
 	// --- Game settings and functions (no patching) ---------------------------
