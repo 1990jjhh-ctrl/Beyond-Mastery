@@ -14,8 +14,11 @@ done
 # header-only and emits x86-64 on this host too, so the generated instructions
 # can be inspected. This is the only check that catches a correct patch address
 # written with a wrong instruction.
-XBYAK_INC="$(dirname "$(dirname "$(find "$ROOT/build" -name xbyak.h 2>/dev/null | head -1)")")"
-if [[ -n "$XBYAK_INC" && -d "$XBYAK_INC" ]]; then
+# Test the find result itself: dirname of an empty string is ".", which would
+# pass a -d check and compile against a directory with no xbyak in it.
+XBYAK_H="$(find "$ROOT/build" -name xbyak.h 2>/dev/null | head -1)"
+if [[ -n "$XBYAK_H" ]]; then
+	XBYAK_INC="$(dirname "$(dirname "$XBYAK_H")")"
 	c++ -std=c++20 -Wall -Wextra -Werror -I "$ROOT/src" -I "$XBYAK_INC" \
 		"$ROOT/tests/test_stubs.cpp" -o "$OUT/test_stubs"
 	"$OUT/test_stubs"
