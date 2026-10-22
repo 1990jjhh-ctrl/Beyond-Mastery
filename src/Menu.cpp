@@ -5,6 +5,7 @@
 #include "Skills.h"
 #include "State.h"
 
+#include <cstring>
 #include <format>
 #include <functional>
 
@@ -86,28 +87,64 @@ namespace BM::Menu
 		void ShowMain(RE::ActorValue a_skill, Callback a_vanilla);
 		void ShowUpgrade(RE::ActorValue a_skill, Callback a_vanilla);
 
-		// FR-31: Reset Skill is vanilla Legendary, so it runs vanilla's own
-		// callback with the button vanilla resets on.
+		// Vanilla's second Legendary box takes its text from this game setting
+		// when Run builds it.
+		constexpr const char* kSecondConfirmSetting = "sLegendaryResetSecondConfirm";
+
+		// What the reset does to the cap here (PRD FR-31): "<Skill> keeps its cap
+		// of N", plus the dragon souls this climb's gates cost, which are lost.
+		// Empty when the cap was never raised, so that box stays pure vanilla.
+		[[nodiscard]] std::string CapNotice(RE::ActorValue a_skill)
+		{
+			const auto  index = Skills::ToIndex(a_skill);
+			const auto& state = State::Get();
+			const auto  cap = state.Cap(index);
+			const auto  souls = Curves::DragonSoulsPaid(state.GatesPaid(index));
+			if (cap <= State::kDefaultCap && souls == 0) {
+				return {};
+			}
+			return souls > 0 ?
+			           std::format("{} keeps its cap of {}, but the {} dragon souls spent on it are lost.",
+						   SkillName(a_skill), cap, souls) :
+			           std::format("{} keeps its cap of {}.", SkillName(a_skill), cap);
+		}
+
+		// FR-31: Reset Skill is vanilla Legendary. Vanilla confirms twice, and our
+		// menu stands in for the first box: the first Run(1) on this callback
+		// shows vanilla's second box ("...set it to 15 and return its perks.
+		// Are you sure?"), and only that box's Yes resets. Gates are cleared by
+		// Hooks::GetSkillCap once the skill is seen below 100, which is right
+		// whichever answer the player gives.
 		void ResetSkill(RE::ActorValue a_skill, const Callback& a_vanilla)
 		{
 			if (!a_vanilla) {
 				return;
 			}
-			const auto before = BaseLevel(a_skill);
-			a_vanilla->Run(kVanillaConfirm);
-			const auto after = BaseLevel(a_skill);
 
-			// Run checks a precondition first and can do nothing. Only a skill
-			// that actually dropped starts a new climb (FR-13). If the reset
-			// lands later than this, Hooks::GetSkillCap clears the gates on the
-			// skill's next XP gain below 100 instead.
-			if (after < before) {
-				State::Get().ClearGates(Skills::ToIndex(a_skill));
-				logger::info("Reset Skill: {} {} -> {}, gates cleared", SkillName(a_skill), before, after);
+			// The cap notice goes in front of vanilla's own, localised text, for
+			// just the moment Run builds the box -- it copies the text -- and the
+			// setting is restored straight after. Setting::SetString is not used:
+			// it frees the old string, which is exe- or engine-owned memory that
+			// our static CRT must never free.
+			auto*      settings = RE::GameSettingCollection::GetSingleton();
+			auto*      setting = settings ? settings->GetSetting(kSecondConfirmSetting) : nullptr;
+			const auto notice = CapNotice(a_skill);
+			if (setting && setting->data.s && !notice.empty()) {
+				static std::array<char, 1024> text{};  // fixed address, valid while the setting points at it
+				char* const                   original = setting->data.s;
+				const auto                    composed = std::format("{} {}", notice, original);
+				const auto                    length = std::min(composed.size(), text.size() - 1);
+				std::memcpy(text.data(), composed.data(), length);
+				text[length] = '\0';
+
+				setting->data.s = text.data();
+				a_vanilla->Run(kVanillaConfirm);
+				setting->data.s = original;
 			} else {
-				logger::info("Reset Skill: {} still {} right after vanilla Legendary; gates kept until it drops",
-					SkillName(a_skill), before);
+				a_vanilla->Run(kVanillaConfirm);
 			}
+			logger::info("Reset Skill: {} handed to vanilla Legendary{}", SkillName(a_skill),
+				notice.empty() ? "" : " with the cap notice");
 		}
 
 		void Apply(RE::ActorValue a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)

@@ -296,8 +296,24 @@ static void TestCapRaisable()
 	CHECK(IsPlausibleCap(kMaxPlausibleCap));  // the last raise still loads
 }
 
+static void TestDragonSoulsPaid()
+{
+	// What Reset Skill forfeits: the gates paid this climb, 10 x T each (PRD §6.2).
+	CHECK_EQ(DragonSoulsPaid(0), 0u);
+	CHECK_EQ(DragonSoulsPaid(1), 10u);
+	CHECK_EQ(DragonSoulsPaid(2), 30u);  // the 250 re-climb: 10 + 20
+	CHECK_EQ(DragonSoulsPaid(3), 60u);
+	// Agrees with UpgradeFor, gate by gate.
+	std::uint32_t sum = 0;
+	for (std::uint8_t g = 0; g < 9; ++g) {
+		sum += UpgradeFor(1000, g).cost.dragonSouls;
+		CHECK_EQ(DragonSoulsPaid(static_cast<std::uint8_t>(g + 1)), sum);
+	}
+}
+
 int main()
 {
+	TestDragonSoulsPaid();
 	TestLimit();
 	TestGatesNeededFor();
 	TestUpgradeFor();

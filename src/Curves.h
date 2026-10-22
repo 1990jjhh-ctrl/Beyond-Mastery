@@ -115,6 +115,13 @@ namespace BM::Curves
 		return a_cap <= 100 ? std::uint8_t{ 0 } : static_cast<std::uint8_t>((a_cap - 100 + 99) / 100);
 	}
 
+	// Dragon souls paid for the gates of the current climb: gate T costs 10 x T,
+	// so gates 1..n cost 10 x n(n+1)/2. What Reset Skill forfeits (FR-13).
+	[[nodiscard]] inline std::uint32_t DragonSoulsPaid(std::uint8_t a_gatesPaid) noexcept
+	{
+		return 10u * a_gatesPaid * (a_gatesPaid + 1u) / 2u;
+	}
+
 	enum class UpgradeKind : std::uint8_t
 	{
 		kGate,        // pay an unpaid gate below the cap; the cap is unchanged

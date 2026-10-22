@@ -153,10 +153,24 @@ Replacing it with a `write_call<5>` call-site hook (a typed C++ function of the
 same signature; no hand-written assembly) replaces the box. Both sites verify at
 drift 0 against `versionlib-1-7-104-0.bin` (`scripts/verify_sites.py`).
 
-`Run` (vtable slot 1, `0x982160`) resets only for **button 1**
-(`movzx ebx, dl … cmp bl, 1; jne <return>`), and only after a precondition call
-(`id 82074`) that can make it do nothing. So Reset Skill delegates with `Run(1)`,
-and must check that the level actually dropped before clearing the paid gates.
+`Run` (vtable slot 1, `0x982160`) acts only for **button 1** — the box's
+buttons are *[No] [Yes]*, so Yes is index 1 — after a precondition call
+(`id 82074`) that can make it do nothing. It does **not** reset on the first
+call: vanilla Legendary confirms twice. Both call sites build the callback with
+`unk18` (+0x18) = 1; while it is set, `Run` clears it and shows a **second box**
+with the same callback, whose text is GMST `sLegendaryResetSecondConfirm`
+(in-game: *"Making a skill Legendary will set it to 15 and return its perks. Are
+you sure?"*; the exe's built-in fallback, *"If you do this you will lose your
+perks and be reset to 15?"*, is overridden by the localised strings). Only that
+box's Yes runs `Run` again with `unk18 == 0` and resets the skill.
+
+So Reset Skill delegates with `Run(1)` and keeps vanilla's second box (FR-31).
+Because the reset happens inside that later box, gates are cleared by the cap
+hook once the skill is seen below 100, not by a level check around `Run`. The
+cap notice is set on `sLegendaryResetSecondConfirm` only while `Run` builds the
+box — `Run` copies the text — and restored straight after. Never use
+`Setting::SetString` for it: it `free()`s the old string, which is exe- or
+engine-owned memory, and with a static CRT that is our heap freeing theirs.
 
 Nothing in the skill tree's Flash UI is touched (FR-17).
 
