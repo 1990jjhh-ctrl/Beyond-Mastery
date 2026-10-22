@@ -9,12 +9,20 @@
 
 namespace
 {
+	// SKSE's interface outlives SKSEPlugin_Load, so it is kept for the conflict
+	// probe, which SKSE only answers from kPostLoad on.
+	const SKSE::LoadInterface* g_skse = nullptr;
+
 	std::vector<std::string> g_conflicts;
 
 	void DetectConflicts()
 	{
+		// Probe through SKSE's own accessor rather than SKSE::GetPluginInfo:
+		// CommonLibSSE's wrapper logs at error level whenever a plugin is
+		// absent, and for a conflict probe "absent" is the normal, healthy
+		// answer -- it put three false [E] lines in every player's log.
 		for (const auto& name : BM::Config::Get().knownConflicts) {
-			if (SKSE::GetPluginInfo(name)) {
+			if (g_skse && g_skse->GetPluginInfo(name.c_str())) {
 				logger::warn("Conflicting SKSE plugin loaded: {}", name);
 				g_conflicts.push_back(name);
 			}
@@ -79,6 +87,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	// trampolineSize covers the cap stub here and the XP stubs to come.
 	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 256 });
+	g_skse = a_skse;
 
 	const auto ver = a_skse->RuntimeVersion();
 	logger::info("Beyond Mastery {} loading on Skyrim {}", SKSE::GetPluginVersion().string(), ver.string());
