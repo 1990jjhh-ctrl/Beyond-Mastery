@@ -12,8 +12,9 @@
 
 namespace BM::Scaling
 {
-	// Reads the formula GMSTs once Skyrim.esm's overrides are loaded
-	// (kDataLoaded) and logs them. Missing settings keep the esm values.
+	// Looks up the formula GMSTs once the game data is loaded (kDataLoaded)
+	// and logs them; every use then reads the setting live, so mods changing
+	// a GMST at runtime are followed. A missing setting keeps the esm value.
 	void CacheSettings();
 
 	// s_eff for a_current: identity at or below 100 and for non-skills,

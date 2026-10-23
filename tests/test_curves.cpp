@@ -380,6 +380,26 @@ static void TestRemapsFiniteAtConfigExtremes()
 	CHECK_NEAR(b.EffectiveSkill(500.0, std::sqrt(1.0)), b.InverseVanilla(1.0), 1.0);
 }
 
+static void TestRemapNeverBelow100WhenLimitIsNotBelowValueAt100()
+{
+	// A limit on the wrong side of the value at 100 (config or a GMST mod)
+	// must not make the skill count for less than 100 or run backwards.
+	const BM::Curves::BarterFormula    vanillaBarter{ 3.3, 2.0 };
+	const BM::Curves::BarterFormula    moddedBarter{ 3.3, 1.0 };    // a mod lowering fBarterMin
+	const BM::Curves::SpellCostFormula moddedSpell{ 0.003, 0.65 };  // Vanilla(100) = 0.543
+	const auto                         check = [](auto a_eff) {
+		double prev = 100.0;
+		for (double s = 100.0; s <= 1e5; s *= 1.3) {
+			const double e = a_eff(s);
+			CHECK(std::isfinite(e) && e >= 100.0 && e >= prev - 1e-9);
+			prev = e;
+		}
+	};
+	check([&](double s) { return vanillaBarter.EffectiveSkill(s, std::sqrt(5.0)); });
+	check([&](double s) { return moddedBarter.EffectiveSkill(s, std::sqrt(1.2)); });
+	check([&](double s) { return moddedSpell.EffectiveSkill(s, 0.59); });
+}
+
 int main()
 {
 	TestDragonSoulsPaid();
@@ -406,6 +426,7 @@ int main()
 	TestSpellCostThroughIntTruncation();
 	TestEnchantChargeVanillaUpTo100();
 	TestRemapsFiniteAtConfigExtremes();
+	TestRemapNeverBelow100WhenLimitIsNotBelowValueAt100();
 	if (g_failures == 0) {
 		std::printf("All curve tests passed.\n");
 	}

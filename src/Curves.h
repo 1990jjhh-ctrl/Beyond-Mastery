@@ -322,13 +322,18 @@ namespace BM::Curves
 		}
 
 		// Effective skill to report to the engine so that it computes the
-		// asymptotic factor instead of the vanilla one.
+		// asymptotic factor instead of the vanilla one. A limit at or above
+		// the value at 100 (config, or a mod changing the GMSTs) leaves no
+		// room to improve: the skill then counts as 100, never less.
 		[[nodiscard]] double EffectiveSkill(double a_skill, double a_limit) const noexcept
 		{
 			if (a_skill <= kVanillaCap) {
 				return a_skill;
 			}
-			return InverseVanilla(MakeAsymptote(a_limit)(a_skill));
+			if (a_limit >= Vanilla(kVanillaCap)) {
+				return kVanillaCap;
+			}
+			return std::max(InverseVanilla(MakeAsymptote(a_limit)(a_skill)), kVanillaCap);
 		}
 	};
 
@@ -371,13 +376,17 @@ namespace BM::Curves
 		}
 
 		// Effective Speech to report to the engine so that it computes the
-		// asymptotic buy factor instead of the vanilla one.
+		// asymptotic buy factor instead of the vanilla one. As for spell cost,
+		// a limit at or above the value at 100 keeps Speech at 100.
 		[[nodiscard]] double EffectiveSkill(double a_skill, double a_limit) const noexcept
 		{
 			if (a_skill <= kVanillaCap) {
 				return a_skill;
 			}
-			return InverseVanilla(MakeAsymptote(a_limit)(a_skill));
+			if (a_limit >= Vanilla(kVanillaCap)) {
+				return kVanillaCap;
+			}
+			return std::max(InverseVanilla(MakeAsymptote(a_limit)(a_skill)), kVanillaCap);
 		}
 	};
 

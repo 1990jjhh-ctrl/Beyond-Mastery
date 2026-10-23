@@ -10,18 +10,35 @@ namespace BM::Scaling
 {
 	namespace
 	{
-		// Formula constants, read from the game at kDataLoaded. The defaults
-		// are Skyrim.esm's values, kept only for a setting that is missing.
+		// A formula GMST, looked up once at kDataLoaded and read live on every
+		// use, as the engine's own code does: barter and economy mods change
+		// these at runtime. The fallback is Skyrim.esm's value, used only for a
+		// setting that does not exist.
+		struct LiveSetting
+		{
+			const char*  name;
+			double       fallback;
+			RE::Setting* setting{ nullptr };
+
+			[[nodiscard]] double Get() const noexcept { return setting ? setting->GetFloat() : fallback; }
+		};
+
 		struct Settings
 		{
-			double spellCostBase{ 0.0025 };  // fMagicCasterPCSkillCostBase
-			double spellCostScale{ 0.65 };   // fMagicPCSkillCostScale
-			double barterMax{ 3.3 };         // fBarterMax
-			double barterMin{ 2.0 };         // fBarterMin
-			double enchantBase{ 0.005 };     // fEnchantingSkillCostBase
-			double enchantScale{ 0.5 };      // fEnchantingSkillCostScale
-			double minBuyMult{ 1.0 };        // fMinBuyMult
-			double maxSellMult{ 1.0 };       // fMaxSellMult
+			LiveSetting spellCostBase{ "fMagicCasterPCSkillCostBase", 0.0025 };
+			LiveSetting spellCostScale{ "fMagicPCSkillCostScale", 0.65 };
+			LiveSetting barterMax{ "fBarterMax", 3.3 };
+			LiveSetting barterMin{ "fBarterMin", 2.0 };
+			LiveSetting enchantBase{ "fEnchantingSkillCostBase", 0.005 };
+			LiveSetting enchantScale{ "fEnchantingSkillCostScale", 0.5 };
+			LiveSetting minBuyMult{ "fMinBuyMult", 1.0 };
+			LiveSetting maxSellMult{ "fMaxSellMult", 1.0 };
+
+			[[nodiscard]] auto All() noexcept
+			{
+				return std::array{ &spellCostBase, &spellCostScale, &barterMax, &barterMin, &enchantBase,
+					&enchantScale, &minBuyMult, &maxSellMult };
+			}
 		};
 
 		Settings g_settings;
@@ -39,20 +56,9 @@ namespace BM::Scaling
 		using ChargePerUse_t = float (*)(float, float);
 		ChargePerUse_t g_charge = nullptr;
 
-		[[nodiscard]] double ReadSetting(const char* a_name, double a_fallback)
-		{
-			auto*       settings = RE::GameSettingCollection::GetSingleton();
-			const auto* setting = settings ? settings->GetSetting(a_name) : nullptr;
-			if (!setting) {
-				logger::warn("{} not found; using {}", a_name, a_fallback);
-				return a_fallback;
-			}
-			return setting->GetFloat();
-		}
-
 		[[nodiscard]] Curves::PowerDecayFormula EnchantCharge() noexcept
 		{
-			return Curves::EnchantChargeFormula(g_settings.enchantBase, g_settings.enchantScale);
+			return Curves::EnchantChargeFormula(g_settings.enchantBase.Get(), g_settings.enchantScale.Get());
 		}
 
 		[[nodiscard]] double EnchantChargeLimit() noexcept
@@ -69,19 +75,15 @@ namespace BM::Scaling
 
 	void CacheSettings()
 	{
-		g_settings.spellCostBase = ReadSetting("fMagicCasterPCSkillCostBase", g_settings.spellCostBase);
-		g_settings.spellCostScale = ReadSetting("fMagicPCSkillCostScale", g_settings.spellCostScale);
-		g_settings.barterMax = ReadSetting("fBarterMax", g_settings.barterMax);
-		g_settings.barterMin = ReadSetting("fBarterMin", g_settings.barterMin);
-		g_settings.enchantBase = ReadSetting("fEnchantingSkillCostBase", g_settings.enchantBase);
-		g_settings.enchantScale = ReadSetting("fEnchantingSkillCostScale", g_settings.enchantScale);
-		g_settings.minBuyMult = ReadSetting("fMinBuyMult", g_settings.minBuyMult);
-		g_settings.maxSellMult = ReadSetting("fMaxSellMult", g_settings.maxSellMult);
-		logger::info(
-			"Scaling settings: spell cost base {} scale {}, barter max {} min {}, enchanting cost base {} scale {}, "
-			"min buy {} max sell {}",
-			g_settings.spellCostBase, g_settings.spellCostScale, g_settings.barterMax, g_settings.barterMin,
-			g_settings.enchantBase, g_settings.enchantScale, g_settings.minBuyMult, g_settings.maxSellMult);
+		auto* collection = RE::GameSettingCollection::GetSingleton();
+		for (auto* live : g_settings.All()) {
+			live->setting = collection ? collection->GetSetting(live->name) : nullptr;
+			if (live->setting) {
+				logger::info("Scaling setting {} = {}", live->name, live->Get());
+			} else {
+				logger::warn("{} not found; using {}", live->name, live->fallback);
+			}
+		}
 	}
 
 	float EffectiveSkill(RE::ActorValue a_av, float a_current) noexcept
@@ -92,12 +94,12 @@ namespace BM::Scaling
 		const auto& config = Config::Get();
 		switch (Skills::ScalingOf(a_av)) {
 		case Skills::Scaling::kSpellCost:
-			return static_cast<float>(Curves::SpellCostFormula{ g_settings.spellCostBase, g_settings.spellCostScale }
+			return static_cast<float>(Curves::SpellCostFormula{ g_settings.spellCostBase.Get(), g_settings.spellCostScale.Get() }
 					.EffectiveSkill(a_current, config.spellCostLimit));
 		case Skills::Scaling::kBarter:
 			// Before perks the buy/sell ratio is buy^2, so the buy factor
 			// heads for the square root of the ratio (FR-26).
-			return static_cast<float>(Curves::BarterFormula{ g_settings.barterMax, g_settings.barterMin }
+			return static_cast<float>(Curves::BarterFormula{ g_settings.barterMax.Get(), g_settings.barterMin.Get() }
 					.EffectiveSkill(a_current, std::sqrt(config.barterMinRatio)));
 		case Skills::Scaling::kSqrt:
 		default:
@@ -185,7 +187,7 @@ namespace BM::Scaling
 		// The engine's own final clamp, then the floor FR-26 adds: the buy
 		// price stays at least fBarterMinRatio times the sell price, whatever
 		// perks and Fortify Barter did before.
-		const auto prices = Curves::BarterFinalClamp(*a_buy, *a_sell, g_settings.minBuyMult, g_settings.maxSellMult,
+		const auto prices = Curves::BarterFinalClamp(*a_buy, *a_sell, g_settings.minBuyMult.Get(), g_settings.maxSellMult.Get(),
 			Config::Get().barterMinRatio);
 		*a_buy = static_cast<float>(prices.buy);
 		*a_sell = static_cast<float>(prices.sell);
