@@ -23,9 +23,14 @@ Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
 - The Reset Skill confirmation names the reset, the returned perks, the kept
   cap and any dragon souls lost (FR-31).
 - The first level past a raised limit or a paid gate costs its full XP (FR-8).
+- Formula scaling above 100 (FR-24 … FR-30), described below: spell cost
+  follows the PRD curve (Destruction 100 → 200 cut a spell's cost by the
+  predicted 0.69×), Speech 1000 buys at exactly 1.2× the sell price, weapon
+  damage grows sub-linearly, enchanting keeps a cost per hit. The skills menu,
+  the crafting menus, the skill-increase notification and the level-up screen
+  all show the real level.
 
 Implemented, but not yet verified in-game:
-- Formula scaling above 100 (FR-24 … FR-30), described below.
 - The optional character-XP clamp, `bClampCharXPAbove100` (FR-11).
 - A one-time log warning if a skill's XP threshold ever passes float
   precision, around level 3,500 (FR-10).
