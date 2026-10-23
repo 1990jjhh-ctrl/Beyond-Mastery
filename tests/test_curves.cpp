@@ -419,20 +419,39 @@ static void TestClampTreatsNonFiniteLikeTheEngine()
 	CHECK(ClampActorValue(nan, kClampAsSpecialStat | kSpecialStatClampsAsNonZero, false) == 10.0);
 }
 
-static void TestSpellCostSkillCeilingHoldsTheLimit()
+static void TestSqrtSkillInverts()
 {
-	// The engine's spell cost takes the skill as an int; capping it at the
-	// ceiling keeps the factor at or above the limit for any skill, including
-	// a modded effect tied to a form A skill.
-	const BM::Curves::SpellCostFormula f{ 0.0025, 0.65 };
-	CHECK(f.SkillCeiling(0.25) == 256);
-	CHECK(f.Vanilla(f.SkillCeiling(0.25)) >= 0.25);
-	CHECK(f.Vanilla(f.SkillCeiling(0.25) + 1) < 0.25);
-	CHECK(f.SkillCeiling(0.0) == 400);                         // factor 0 exactly at 400
-	CHECK(f.SkillCeiling(0.59) >= 100);                        // just under the value at 100
-	CHECK(f.SkillCeiling(0.6) == 100);                         // limit above the value at 100
-	const BM::Curves::SpellCostFormula modded{ 0.003, 0.65 };  // Vanilla(100) = 0.543
-	CHECK(modded.SkillCeiling(0.59) == 100);
+	using namespace BM::Curves;
+	for (double s : { 0.0, 50.0, 100.0, 101.0, 150.0, 400.0, 1e4 })
+		CHECK_NEAR(RealSkillFromSqrt(SqrtEffectiveSkill(s)), s, 1e-9 * (1.0 + s));
+}
+
+static void TestSpellCostSkillFollowsFormBForAnySkill()
+{
+	// Every skill reaches spell cost as int(form A). The engine skill the
+	// wrapper hands on must give form B of the real skill -- the PRD curve --
+	// whichever skill it is, keep rewarding a higher skill, and never let the
+	// factor drop below the limit.
+	using namespace BM::Curves;
+	const SpellCostFormula f{ 0.0025, 0.65 };
+	const auto             factor = [&](double s) {
+		const auto incoming = static_cast<std::int32_t>(std::floor(SqrtEffectiveSkill(s)));
+		return f.Vanilla(SpellCostEngineSkill(incoming, f, 0.25));
+	};
+	for (double s : { 15.0, 50.0, 100.0 }) CHECK_NEAR(factor(s), f.Vanilla(std::floor(s)), 1e-12);  // vanilla
+	CHECK_NEAR(factor(150.0), 0.48, 0.01);                                                          // PRD §6.9 table
+	CHECK_NEAR(factor(200.0), 0.41, 0.01);
+	CHECK_NEAR(factor(300.0), 0.33, 0.01);
+	CHECK_NEAR(factor(400.0), 0.29, 0.01);  // criterion 8
+	double prev = factor(100.0);
+	for (double s = 100.0; s <= 1e5; s *= 1.2) {
+		const double v = factor(s);
+		CHECK(v >= 0.25 && v <= prev + 1e-12);  // floor held, never worse with more skill
+		prev = v;
+	}
+	// Buffs keep counting: no fixed cap. Near the floor the engine's int skill
+	// is the resolution limit (real 900 and 2000 both give engine skill 256).
+	CHECK(factor(600.0) < factor(400.0));
 }
 
 int main()
@@ -463,7 +482,8 @@ int main()
 	TestRemapsFiniteAtConfigExtremes();
 	TestRemapNeverBelow100WhenLimitIsNotBelowValueAt100();
 	TestClampTreatsNonFiniteLikeTheEngine();
-	TestSpellCostSkillCeilingHoldsTheLimit();
+	TestSqrtSkillInverts();
+	TestSpellCostSkillFollowsFormBForAnySkill();
 	if (g_failures == 0) {
 		std::printf("All curve tests passed.\n");
 	}

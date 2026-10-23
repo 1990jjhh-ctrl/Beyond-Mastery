@@ -26,24 +26,19 @@ namespace BM::Skills
 		return static_cast<RE::ActorValue>(kFirstAV + a_index);
 	}
 
-	// How formulas reading this skill are continued above 100 (PRD §6.9).
+	// How the remap continues this skill above 100 (PRD §6.9). Form A for all
+	// but Speech: spell cost gets form B in its own calls, from the real skill
+	// recovered from form A, so it holds for any skill an effect is tied to.
 	enum class Scaling : std::uint8_t
 	{
-		kSqrt,       // form A
-		kSpellCost,  // form B via inverse of the spell cost formula
-		kBarter      // form B, handled by the barter hook (hook-points.md §6)
+		kSqrt,   // form A
+		kBarter  // form B through the inverse of the barter formula (hook-points.md §6)
 	};
 
 	[[nodiscard]] inline Scaling ScalingOf(RE::ActorValue a_av) noexcept
 	{
 		using AV = RE::ActorValue;
 		switch (a_av) {
-		case AV::kAlteration:
-		case AV::kConjuration:
-		case AV::kDestruction:
-		case AV::kIllusion:
-		case AV::kRestoration:
-			return Scaling::kSpellCost;
 		case AV::kSpeech:
 			return Scaling::kBarter;
 		default:

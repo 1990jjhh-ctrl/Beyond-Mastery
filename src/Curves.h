@@ -249,6 +249,16 @@ namespace BM::Curves
 		return kVanillaCap + 2.0 * kVanillaCap * (std::sqrt(a_skill / kVanillaCap) - 1.0);
 	}
 
+	// Inverse of SqrtEffectiveSkill: the real skill a form A value came from.
+	[[nodiscard]] inline double RealSkillFromSqrt(double a_effective) noexcept
+	{
+		if (a_effective <= kVanillaCap) {
+			return a_effective;
+		}
+		const double root = (a_effective - kVanillaCap) / (2.0 * kVanillaCap) + 1.0;
+		return kVanillaCap * root * root;
+	}
+
 	// ---------------------------------------------------------------------
 	// Form B: asymptotic continuation (PRD §6.9 B)
 	// ---------------------------------------------------------------------
@@ -321,22 +331,6 @@ namespace BM::Curves
 			return std::pow(x, 1.0 / exponent) / base;
 		}
 
-		// Highest whole skill at which the vanilla factor is still at or above
-		// a_limit -- never below 100. The engine takes the spell-cost skill as
-		// an int, so capping it here holds the limit for any skill, including
-		// a modded effect tied to a form A skill (FR-25).
-		[[nodiscard]] std::int32_t SkillCeiling(double a_limit) const noexcept
-		{
-			if (a_limit >= Vanilla(kVanillaCap)) {
-				return static_cast<std::int32_t>(kVanillaCap);
-			}
-			auto ceiling = static_cast<std::int32_t>(std::floor(InverseVanilla(a_limit)));
-			while (ceiling > kVanillaCap && Vanilla(ceiling) < a_limit) {
-				--ceiling;  // pow round-off at the boundary
-			}
-			return std::max(ceiling, static_cast<std::int32_t>(kVanillaCap));
-		}
-
 		// Effective skill to report to the engine so that it computes the
 		// asymptotic factor instead of the vanilla one. A limit at or above
 		// the value at 100 (config, or a mod changing the GMSTs) leaves no
@@ -352,6 +346,21 @@ namespace BM::Curves
 			return std::max(InverseVanilla(MakeAsymptote(a_limit)(a_skill)), kVanillaCap);
 		}
 	};
+
+	// The skill to hand the engine's spell-cost function (FR-25). Every skill
+	// reaches it as int(form A) -- the remap is form A for all of them, and a
+	// modded effect can tie spell cost to any skill -- so the real skill is
+	// recovered and form B applied to it, the same curve as the magic schools.
+	// The engine truncates to int, which is also the resolution near the limit.
+	[[nodiscard]] inline std::int32_t SpellCostEngineSkill(std::int32_t a_incoming, const PowerDecayFormula& a_formula,
+		double a_limit) noexcept
+	{
+		if (a_incoming <= static_cast<std::int32_t>(kVanillaCap)) {
+			return a_incoming;
+		}
+		const double real = RealSkillFromSqrt(a_incoming);
+		return static_cast<std::int32_t>(std::floor(a_formula.EffectiveSkill(real, a_limit)));
+	}
 
 	// Spell cost skill factor. Vanilla GMST-equivalent constants: base 1/400, exponent 0.65.
 	// The plugin reads the real values from the game at runtime.

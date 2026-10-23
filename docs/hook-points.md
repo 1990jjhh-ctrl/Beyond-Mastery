@@ -76,8 +76,8 @@ AE/1.7.x; SE 1.5.97 is out of scope (PRD §3). Player only — NPCs stay vanilla
 ActorValueOwner vtables 207521, 207896 and 208050. Nothing in the exe calls it
 directly, so replacing slot 1 of **208050** catches every read of the player's
 skills and no NPC's. The callee returns `s_eff` for skills above 100: form A for
-most, the inverse of the spell-cost formula for magic schools (§5.2), the inverse
-of the barter formula for Speech (§6).
+every skill except Speech, which gets the inverse of the barter formula (§6).
+Spell cost applies form B in its own calls (§5.2).
 
 The engine's XP routine reads the skill through slot **3** (`call [rax+0x18]`,
 `GetBaseActorValue`), so leveling and our cap hook never see `s_eff`.
@@ -107,18 +107,18 @@ vanilla rules for everyone, except that the player's skills are only kept ≥ 0.
 Spell cost (26505) for the player is
 `cost · fMagicCasterPCSkillCostMult · (1 − (int(skill) · fMagicCasterPCSkillCostBase)^fMagicPCSkillCostScale)`;
 NPCs use `fMagicCasterSkillCostBase` / `fMagicSkillCostScale` /
-`fMagicCasterSkillCostMult`. The skill arrives **truncated to int**. Form B
-reaches it through the remap: `s_eff = (1/b) · (1 − m(s))^(1/e)` with the PC
-GMSTs read at runtime (Skyrim.esm: b = 0.0025, e = 0.65), so `s_eff → ≈ 257` as
-`s → ∞`. Perk, equipment and dual-cast multipliers apply afterwards, as FR-25
-requires.
+`fMagicCasterSkillCostMult`. The skill arrives **truncated to int**, and it is
+whatever skill the effect is tied to — any of the 18, not only the magic schools.
 
-26505 takes `(ActorValueOwner* caster, float cost, int skill)`, and the skill is
-whatever skill the effect is tied to — any of the 18, so a modded effect tied to
-a form A skill would reach factor 0 at `s_eff` 400 (real ≈ 900). Both calls are
-wrapped to cap the skill at `SkillCeiling(fSpellCostLimit)` (256 with the esm
-values), the highest whole skill whose factor is still ≥ the limit. NPC skills
-arrive clamped to 100, below any ceiling, so they stay vanilla.
+Every skill reaches 26505 as `int(form A)`, because the remap is form A for all
+but Speech. Both calls are wrapped: the wrapper recovers the real skill
+(`RealSkillFromSqrt`), applies form B `m(s) = 0.25 + (m₁₀₀ − 0.25)·e^(−(s−100)/τ)`
+with the PC GMSTs read at runtime (Skyrim.esm: base 0.0025, scale 0.65), and hands
+the engine `floor(InverseVanilla(m(s)))`, so the engine computes `m(s)` itself —
+the same curve for a magic school and for a modded effect tied to, say, Sneak.
+The int is also the resolution near the limit: real skill 900 and 2000 both give
+engine skill 256. NPC skills arrive clamped to 100 and pass through unchanged.
+Perk, equipment and dual-cast multipliers apply afterwards, as FR-25 requires.
 
 The shared `GetActorValue` (38462) is byte-checked too: a mod that detoured it
 would stack its own remap under ours, so formula scaling refuses to install and

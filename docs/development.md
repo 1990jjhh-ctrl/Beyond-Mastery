@@ -92,7 +92,8 @@ Consequences:
 
 - Every other reader of the player's current skill also sees `s_eff`: Papyrus, perk conditions and other mods. The values stay ≥ 100, so vanilla perk requirements still pass. The XP routine reads the *base* value (slot 3), so leveling is unaffected.
 - The engine's generic `GetClampedActorValue` clamps every skill to 100. Spell cost, barter Speech, Lockpicking, Pickpocket and Sneak read through it, so it is replaced: vanilla for everyone, but the player's skills are only kept ≥ 0.
-- Spell cost and barter get form B through `s_eff` itself: the remap inverts the vanilla formula, so the engine computes the asymptotic value. The spell-cost function's two calls also cap the skill where the factor reaches `fSpellCostLimit`, because a modded effect can tie spell cost to any skill, including a form A one.
+- Barter gets form B through `s_eff` itself: Speech's remap inverts the vanilla formula, so the engine computes the asymptotic value.
+- Spell cost gets form B in its own two calls. The remap is form A for every other skill, and a modded effect can tie spell cost to any of them, so the wrapper recovers the real skill from form A, applies form B, and hands the engine the skill that produces that factor.
 - The skills menu must show the real level (FR-29): its three calls to `UpdateSkillList` are wrapped so the remap is off while it runs.
 - Enchanting charge per use is the exception: its only call is replaced and computed from the **real** skill (FR-30), while its magnitude goes through `s_eff`.
 - Barter's final clamp after perks is replaced by a stub that adds the 1.2 buy/sell floor (FR-26).

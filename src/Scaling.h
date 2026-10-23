@@ -60,6 +60,6 @@ namespace BM::Scaling
 	void SetOriginalSpellCost(std::uintptr_t a_original) noexcept;
 
 	// Call-site thunk for the spell-cost skill factor (FR-25): the engine's
-	// own, with the skill capped where the factor reaches fSpellCostLimit.
+	// own, fed the skill that makes it compute form B of the real skill.
 	float SpellCostFactor(RE::ActorValueOwner* a_caster, float a_cost, std::int32_t a_skill);
 }

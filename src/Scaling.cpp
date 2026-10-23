@@ -101,9 +101,6 @@ namespace BM::Scaling
 		}
 		const auto& config = Config::Get();
 		switch (Skills::ScalingOf(a_av)) {
-		case Skills::Scaling::kSpellCost:
-			return static_cast<float>(Curves::SpellCostFormula{ g_settings.spellCostBase.Get(), g_settings.spellCostScale.Get() }
-					.EffectiveSkill(a_current, config.spellCostLimit));
 		case Skills::Scaling::kBarter:
 			// Before perks the buy/sell ratio is buy^2, so the buy factor
 			// heads for the square root of the ratio (FR-26).
@@ -123,6 +120,15 @@ namespace BM::Scaling
 				info && info->GetFullName() ? info->GetFullName() : "?", EffectiveSkill(av, 100.0f),
 				EffectiveSkill(av, 150.0f), EffectiveSkill(av, 400.0f));
 		}
+		// Spell cost as the engine will compute it: real skill -> form A (int)
+		// -> the wrapper's engine skill -> the vanilla factor of that.
+		const Curves::SpellCostFormula spell{ g_settings.spellCostBase.Get(), g_settings.spellCostScale.Get() };
+		const auto                     spellFactor = [&](double a_real) {
+			const auto incoming = static_cast<std::int32_t>(Curves::SqrtEffectiveSkill(a_real));
+			return spell.Vanilla(Curves::SpellCostEngineSkill(incoming, spell, Config::Get().spellCostLimit));
+		};
+		logger::info("Scaling self-check: spell cost factor 100 -> {}, 150 -> {}, 400 -> {}, 1000 -> {}",
+			spellFactor(100.0), spellFactor(150.0), spellFactor(400.0), spellFactor(1000.0));
 		const auto charge = EnchantCharge();
 		logger::info("Scaling self-check: enchanting charge factor 100 -> {}, 200 -> {}, 1000 -> {}",
 			charge.Factor(100.0, EnchantChargeLimit()), charge.Factor(200.0, EnchantChargeLimit()),
@@ -212,11 +218,10 @@ namespace BM::Scaling
 
 	float SpellCostFactor(RE::ActorValueOwner* a_caster, float a_cost, std::int32_t a_skill)
 	{
-		// The magic schools already stay below the ceiling through the remap;
-		// this holds the same limit for an effect tied to any other skill.
-		// NPC skills are clamped to 100, below any ceiling, so they are vanilla.
-		const auto ceiling = Curves::SpellCostFormula{ g_settings.spellCostBase.Get(), g_settings.spellCostScale.Get() }
-		                         .SkillCeiling(Config::Get().spellCostLimit);
-		return g_spellCost.load(std::memory_order_acquire)(a_caster, a_cost, std::min(a_skill, ceiling));
+		// Form B of the real skill, for whichever skill the effect is tied to.
+		// NPC skills arrive clamped to 100 and pass through unchanged.
+		const Curves::SpellCostFormula formula{ g_settings.spellCostBase.Get(), g_settings.spellCostScale.Get() };
+		const auto                     skill = Curves::SpellCostEngineSkill(a_skill, formula, Config::Get().spellCostLimit);
+		return g_spellCost.load(std::memory_order_acquire)(a_caster, a_cost, skill);
 	}
 }
