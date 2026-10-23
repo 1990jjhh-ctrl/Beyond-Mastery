@@ -6,6 +6,7 @@
 // signature check cannot catch -- a correct address patched with a wrong
 // instruction -- visible without launching Skyrim.
 
+#include "HookSites.h"
 #include "Stubs.h"
 
 #include <cstdio>
@@ -146,15 +147,55 @@ static void TestCapStubSpillsAndRestoresXmm0()
 	CHECK(BM::Stubs::kCapLoadLength >= 5);
 }
 
+static void TestBarterClampStubPointsAtTheEngineFrame()
+{
+	const auto code = Emit<BM::Stubs::BarterClampStub>();
+
+	// The engine keeps buy at [rbp+0xA0] and sell at [rbp+0x98]; rbp is its
+	// frame register and our push of a return address does not move it, so
+	// these displacements are NOT adjusted by kStubFrameAdjust.
+	CHECK(Contains(code, { 0x48, 0x8D, 0x8D, 0xA0, 0x00, 0x00, 0x00 }));        // lea rcx, [rbp+0xA0]
+	CHECK(Contains(code, { 0x48, 0x8D, 0x95, 0x98, 0x00, 0x00, 0x00 }));        // lea rdx, [rbp+0x98]
+	CHECK(Contains(code, { 0xF3, 0x0F, 0x10, 0x8D, 0xA0, 0x00, 0x00, 0x00 }));  // movss xmm1, [rbp+0xA0]
+	CHECK(Contains(code, { 0xF3, 0x0F, 0x10, 0x85, 0x98, 0x00, 0x00, 0x00 }));  // movss xmm0, [rbp+0x98]
+	// The callee gets shadow space and a 16-aligned rsp.
+	CHECK(Contains(code, { 0x48, 0x83, 0xEC, 0x38 }));  // sub rsp, 0x38
+	CHECK(Contains(code, { 0x48, 0x83, 0xC4, 0x38 }));  // add rsp, 0x38
+	CHECK_EQ(code.back(), std::uint8_t{ 0xC3 });        // ret
+	CHECK(BM::HookSites::kBarterFinalClampLength >= 5);
+}
+
+static void TestCharXPClampStubPreservesRax()
+{
+	BM::Stubs::CharXPClampStub stub{ kFakeCallee };
+	stub.ready();
+	const std::vector<std::uint8_t> code{ stub.getCode(), stub.getCode() + stub.getSize() };
+
+	// The new level, clamped to 100, times fXPPerSkillRank -- in that order.
+	CHECK(code.size() > 4 && code[0] == 0xF3 && code[1] == 0x0F && code[2] == 0x5C && code[3] == 0xCA);  // subss xmm1, xmm2
+	CHECK(Contains(code, { 0xF3, 0x0F, 0x5D, 0x0D }));                                                   // minss xmm1, [rip+...]
+	CHECK(Contains(code, { 0xF3, 0x0F, 0x59, 0x09 }));                                                   // mulss xmm1, [rcx]
+	// rax is live at the site, so the setting's address goes through rcx,
+	// saved and restored.
+	CHECK(Contains(code, { 0x51 }));         // push rcx
+	CHECK(Contains(code, { 0x59, 0xC3 }));   // pop rcx; ret
+	CHECK(Contains(code, { 0x48, 0xB9 }));   // mov rcx, imm64
+	CHECK(!Contains(code, { 0x48, 0xB8 }));  // never mov rax, imm64
+	// The clamp constant follows the code: 100.0f.
+	CHECK(Contains(code, { 0x00, 0x00, 0xC8, 0x42 }));
+	CHECK(BM::Stubs::kCharXPLength >= 5);
+}
+
 static void TestStubsFitTheTrampolineBudget()
 {
-	// main.cpp asks SKSE for 256 bytes; both stubs plus every write_call
-	// thunk (14 bytes each) have to fit with room to spare.
-	const auto cap = Emit<BM::Stubs::CapStub>().size();
-	const auto xp = Emit<BM::Stubs::XPGainStub>().size();
-	// Four write_call<5> thunks: the cap and XP sites, and the two Legendary
-	// box call sites.
-	CHECK(cap + xp + 4 * 14 < 256);
+	// main.cpp asks SKSE for kTrampolineSize bytes; every stub plus every
+	// write_call/write_branch thunk (14 bytes each) has to fit with room to spare.
+	const auto stubs = Emit<BM::Stubs::CapStub>().size() + Emit<BM::Stubs::XPGainStub>().size() +
+	                   Emit<BM::Stubs::BarterClampStub>().size() + Emit<BM::Stubs::CharXPClampStub>().size();
+	// Thunks: cap, XP gain, two Legendary boxes, three skills-menu calls,
+	// the GetClampedActorValue branch, the charge call, the barter clamp and
+	// the character-XP clamp.
+	CHECK(stubs + 11 * 14 < BM::Stubs::kTrampolineSize);
 }
 
 int main()
@@ -162,6 +203,8 @@ int main()
 	TestFrameAdjustAccountsForTheReturnAddress();
 	TestXPGainStubReadsTheEngineFrame();
 	TestCapStubSpillsAndRestoresXmm0();
+	TestBarterClampStubPointsAtTheEngineFrame();
+	TestCharXPClampStubPreservesRax();
 	TestStubsFitTheTrampolineBudget();
 	if (g_failures == 0) {
 		std::printf("All stub tests passed.\n");

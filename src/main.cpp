@@ -2,6 +2,7 @@
 #include "HookSites.h"
 #include "Hooks.h"
 #include "State.h"
+#include "Stubs.h"
 
 // Milestone 1: plugin loads on SE and AE, reads the INI, persists caps in
 // the co-save and detects conflicting plugins. Engine hooks (docs/hook-points.md)
@@ -86,8 +87,8 @@ namespace
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
-	// trampolineSize covers the cap stub here and the XP stubs to come.
-	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 256 });
+	// Sized for every stub and call thunk the hooks install (Stubs.h).
+	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = BM::Stubs::kTrampolineSize });
 	g_skse = a_skse;
 
 	const auto ver = a_skse->RuntimeVersion();
