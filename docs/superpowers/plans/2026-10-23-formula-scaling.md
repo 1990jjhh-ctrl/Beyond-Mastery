@@ -38,14 +38,14 @@ The skills menu bypasses the remap (FR-29). All math is game-free in `Curves.h`,
 - Every patch site is resolved by Address Library id and byte-checked; call sites are also target-checked (as `InstallLegendaryMenu` does). On mismatch: log, set the conflict flag, skip.
 - Struct members that move between runtimes are reached only through NG runtime accessors (development.md, "Working on hooks").
 
-## Decisions taken in this plan (review before execution)
+## Decisions taken in this plan (approved by Joel, 2026-10-23)
 
-1. **The vtable slot, not a byte patch of `38462`.** Patching the shared function would remap NPCs too. Cost if wrong: a mod that calls `38462` directly would bypass the remap; none does in vanilla.
+1. **The vtable slot, not a byte patch of `38462`.** Patching the shared function would remap NPCs too, and NPCs stay purely vanilla (Joel's ruling). Cost if wrong: a mod that calls `38462` directly would bypass the remap; none does in vanilla.
 2. **`GetClampedActorValue` is reimplemented** (`write_branch<5>` at its entry). The player's `kClampAsSkill` values are clamped at 0 only; everything else follows the vanilla rules above. This is what lets form A reach Lockpicking/Pickpocket/Sneak and form B reach spell cost and barter. FR-27's formula-level clamps (pickpocket max chance, etc.) are untouched.
 3. **The spell-cost and barter limits come through `s_eff`** (the inverse of the vanilla formula), not through extra hooks. The barter limit for the pre-perk buy factor is `√fBarterMinRatio` (≈ 1.095), because the ratio before perks is `buy/sell = buy²`. The final clamp then enforces the ratio after perks.
 4. **The `kBeginMaxChargeCalculation` / `kEndMaxChargeCalculation` sites are deleted**: max charge never reads the skill. `kCapMagickaCDR` becomes `kGetClampedActorValue`. `kUpdateSkillList` (whole function) becomes three call sites.
-5. **FR-10 is deferred, with a one-time log warning.** Float accumulation becomes inexact only once a skill's threshold passes 2²⁴. For Two-Handed (improveMult 2, `fSkillUseCurve` 1.95) that is level ≈ 3,550. Implementing a double accumulator now would mean an always-on XP hook for a level nobody reaches. Instead, the cap hook logs once per skill when `Curves::ThresholdNeedsDouble` first holds. **Needs your approval; it changes how FR-10 is met.**
-6. **FR-28 "scaling form per formula" is the master switch plus the three limits.** No per-skill form choice. **Needs your approval.**
+5. **FR-10 is deferred, with a one-time log warning.** Float accumulation becomes inexact only once a skill's threshold passes 2²⁴. For Two-Handed (improveMult 2, `fSkillUseCurve` 1.95) that is level ≈ 3,550. Implementing a double accumulator now would mean an always-on XP hook for a level nobody reaches. Instead, the cap hook logs once per skill when `Curves::ThresholdNeedsDouble` first holds. Approved: floats stay.
+6. **FR-28 "scaling form per formula" is the master switch plus the three limits.** No per-skill form choice. Approved.
 
 ## Review Focus
 
