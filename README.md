@@ -29,9 +29,14 @@ Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
   damage grows sub-linearly, enchanting keeps a cost per hit. The skills menu,
   the crafting menus, the skill-increase notification and the level-up screen
   all show the real level.
+- The optional character-XP clamp, `bClampCharXPAbove100` (FR-11): a skill
+  level-up above 100 gives the character XP of one at 100, checked to the
+  point through the plugin's `Character XP … (+N)` log line.
+- The optional skill XP scaling, `bScaleXPGainAbove100` (FR-9): above 100,
+  skill XP from use is multiplied by `√(100/skill)`; trainers and skill books
+  still grant exact levels.
 
 Implemented, but not yet verified in-game:
-- The optional character-XP clamp, `bClampCharXPAbove100` (FR-11).
 - A one-time log warning if a skill's XP threshold ever passes float
   precision, around level 3,500 (FR-10).
 - The conflict warning (FR-20).
