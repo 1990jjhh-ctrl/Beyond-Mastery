@@ -49,4 +49,8 @@ namespace BM::Scaling
 	// Call-site thunk replacing the engine's charge per use (FR-30): computed
 	// from the real Enchanting skill, vanilla up to 100, form B above.
 	float ChargePerUse(float a_baseCost, float a_skill);
+
+	// Callee of the barter final-clamp stub (FR-26): the engine's clamp of
+	// the buy and sell factors after perks, plus the buy/sell ratio floor.
+	void BarterClamp(float* a_buy, float* a_sell);
 }

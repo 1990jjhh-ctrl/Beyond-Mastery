@@ -20,6 +20,8 @@ namespace BM::Scaling
 			double barterMin{ 2.0 };         // fBarterMin
 			double enchantBase{ 0.005 };     // fEnchantingSkillCostBase
 			double enchantScale{ 0.5 };      // fEnchantingSkillCostScale
+			double minBuyMult{ 1.0 };        // fMinBuyMult
+			double maxSellMult{ 1.0 };       // fMaxSellMult
 		};
 
 		Settings g_settings;
@@ -73,9 +75,13 @@ namespace BM::Scaling
 		g_settings.barterMin = ReadSetting("fBarterMin", g_settings.barterMin);
 		g_settings.enchantBase = ReadSetting("fEnchantingSkillCostBase", g_settings.enchantBase);
 		g_settings.enchantScale = ReadSetting("fEnchantingSkillCostScale", g_settings.enchantScale);
-		logger::info("Scaling settings: spell cost base {} scale {}, barter max {} min {}, enchanting cost base {} scale {}",
+		g_settings.minBuyMult = ReadSetting("fMinBuyMult", g_settings.minBuyMult);
+		g_settings.maxSellMult = ReadSetting("fMaxSellMult", g_settings.maxSellMult);
+		logger::info(
+			"Scaling settings: spell cost base {} scale {}, barter max {} min {}, enchanting cost base {} scale {}, "
+			"min buy {} max sell {}",
 			g_settings.spellCostBase, g_settings.spellCostScale, g_settings.barterMax, g_settings.barterMin,
-			g_settings.enchantBase, g_settings.enchantScale);
+			g_settings.enchantBase, g_settings.enchantScale, g_settings.minBuyMult, g_settings.maxSellMult);
 	}
 
 	float EffectiveSkill(RE::ActorValue a_av, float a_current) noexcept
@@ -172,5 +178,16 @@ namespace BM::Scaling
 			return g_charge(a_baseCost, real);
 		}
 		return static_cast<float>(g_charge(a_baseCost, 0.0f) * EnchantCharge().Factor(real, EnchantChargeLimit()));
+	}
+
+	void BarterClamp(float* a_buy, float* a_sell)
+	{
+		// The engine's own final clamp, then the floor FR-26 adds: the buy
+		// price stays at least fBarterMinRatio times the sell price, whatever
+		// perks and Fortify Barter did before.
+		const auto prices = Curves::BarterFinalClamp(*a_buy, *a_sell, g_settings.minBuyMult, g_settings.maxSellMult,
+			Config::Get().barterMinRatio);
+		*a_buy = static_cast<float>(prices.buy);
+		*a_sell = static_cast<float>(prices.sell);
 	}
 }

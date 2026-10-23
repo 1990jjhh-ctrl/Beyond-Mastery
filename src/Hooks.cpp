@@ -379,13 +379,32 @@ namespace BM::Hooks
 				return false;
 			}
 
-			auto& trampoline = SKSE::GetTrampoline();
+			// The barter menu's final price clamp (FR-26).
+			const auto barter = CheckDetailed(HookSites::kBarterFinalClamp);
+			if (barter.status != SiteStatus::kReady) {
+				return false;
+			}
+
+			auto&                  trampoline = SKSE::GetTrampoline();
+			Stubs::BarterClampStub barterCode{ reinterpret_cast<std::uintptr_t>(&Scaling::BarterClamp) };
+			barterCode.ready();
+			auto* barterStub = trampoline.allocate(barterCode.getSize());
+			if (barterStub == nullptr) {
+				logger::error("No trampoline space for the barter stub ({} bytes)", barterCode.getSize());
+				return false;
+			}
+			std::memcpy(barterStub, barterCode.getCode(), barterCode.getSize());
+
 			for (const auto call : calls) {
 				trampoline.write_call<5>(call, &Scaling::UpdateSkillList);
 			}
 			Scaling::SetOriginalChargePerUse(chargePerUse.address());
 			trampoline.write_call<5>(chargeCall, &Scaling::ChargePerUse);
 			trampoline.write_branch<5>(clamp.address, &Scaling::GetClampedActorValue);
+			trampoline.write_call<5>(barter.address, reinterpret_cast<std::uintptr_t>(barterStub));
+			std::array<std::uint8_t, HookSites::kBarterFinalClampLength - 5> barterNops{};
+			barterNops.fill(REL::NOP);
+			REL::safe_write(barter.address + 5, barterNops.data(), barterNops.size());
 			// The original first: the slot is live the moment it is written.
 			Scaling::SetOriginalGetActorValue(slot);
 			vtable.write_vfunc(1, &Scaling::GetActorValue);
