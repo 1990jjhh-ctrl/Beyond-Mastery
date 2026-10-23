@@ -33,7 +33,7 @@ The version lives in one place: `VERSION` in `CMakeLists.txt`'s `project()` call
 
 1. Bump `VERSION` in a pull request and merge it.
 2. Tag the merge commit and push the tag: `git tag v1.2.3 && git push origin v1.2.3`.
-3. The build workflow refuses a tag that is not `v` + the version, builds, and publishes a GitHub Release with both archives:
+3. The build workflow refuses a tag that is not `v` + the version, then publishes a GitHub Release with both archives. It doesn't rebuild if a run in this repository already built the tag's exact tree: artifacts are named `BeyondMastery-tree-<tree hash>`, and a merged PR's own Build run usually matches, so the release ships the archives you could test from the PR. If `master` moved between that run and the merge, or the artifact expired (90 days), it builds instead. To get a reusable build after `master` moved, update the PR branch before merging. The archives:
    - `BeyondMastery-<version>.zip`, rooted at `Data/`, for Nexus and mod managers;
    - `BeyondMastery-<version>-SKSE-Plugins.zip`, rooted at `Data/SKSE/Plugins/`.
 

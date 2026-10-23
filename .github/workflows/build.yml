@@ -1,7 +1,15 @@
 # Builds BeyondMastery.dll exactly as a developer does -- scripts/setup.sh, then
 # scripts/build.sh (tests and runtime-import gate included) -- and packages it
 # with scripts/package.py. Every run uploads the archives as a downloadable
-# artifact; a v* tag also publishes them as a GitHub Release.
+# artifact named after the git *tree* it built; a v* tag also publishes them as
+# a GitHub Release.
+#
+# A tag reuses an artifact instead of rebuilding when one exists for exactly
+# the tag's tree -- usually the merged PR's own Build run, whose preview merge
+# has the same tree as the merge commit as long as master did not move in
+# between. So the release ships the bytes that could be tested from the PR.
+# Only artifacts from runs in this repository count (pushed by someone with
+# write access); a fork's pull request cannot plant one for a future tree.
 #
 # setup.sh downloads the MSVC CRT and Windows SDK with xwin, which accepts
 # Microsoft's license on the repository owner's behalf, as it does locally.
@@ -33,17 +41,52 @@ env:
   XWIN_VERSION: "0.10.0"  # as pinned in scripts/setup.sh
 
 jobs:
+  prepare:
+    name: Tree, tag check and reusable build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tree: ${{ steps.tree.outputs.tree }}
+      reuse-run: ${{ steps.reuse.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tree this run builds
+        id: tree
+        run: echo "tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse a tag that does not match the project version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python3 scripts/package.py --tag "${{ github.ref_name }}" --check-only
+
+      - name: Find a build of the same tree from this repository
+        id: reuse
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TREE: ${{ steps.tree.outputs.tree }}
+        run: |
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=BeyondMastery-tree-$TREE&per_page=100" \
+            --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_repository_id == ${{ github.repository_id }})]
+                  | sort_by(.created_at) | last | .workflow_run.id // empty')
+          if [ -n "$run" ]; then
+            echo "Reusing the archives built by run $run for tree $TREE"
+          else
+            echo "No build of tree $TREE to reuse; building"
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build and package
+    needs: prepare
+    if: needs.prepare.outputs.reuse-run == ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Refuse a tag that does not match the project version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: python3 scripts/package.py --tag "${{ github.ref_name }}" --check-only
 
       - name: System tools (clang ${{ env.LLVM_VERSION }}, lld, llvm, ninja, wine)
         run: |
@@ -102,21 +145,36 @@ jobs:
       - name: Upload the archives
         uses: actions/upload-artifact@v4
         with:
-          name: BeyondMastery-${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          name: BeyondMastery-tree-${{ needs.prepare.outputs.tree }}
           path: dist/*.zip
           if-no-files-found: error
 
   release:
     name: Publish the GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [prepare, build]
+    # build is skipped when an earlier run's archives are reused.
+    if: >-
+      always() && startsWith(github.ref, 'refs/tags/') &&
+      needs.prepare.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read
     steps:
-      - uses: actions/download-artifact@v4
+      - name: The archives from the earlier run of the same tree
+        if: needs.prepare.outputs.reuse-run != ''
+        uses: actions/download-artifact@v4
         with:
-          name: BeyondMastery-${{ github.ref_name }}
+          name: BeyondMastery-tree-${{ needs.prepare.outputs.tree }}
+          run-id: ${{ needs.prepare.outputs.reuse-run }}
+          github-token: ${{ github.token }}
+          path: dist
+      - name: The archives this run built
+        if: needs.prepare.outputs.reuse-run == ''
+        uses: actions/download-artifact@v4
+        with:
+          name: BeyondMastery-tree-${{ needs.prepare.outputs.tree }}
           path: dist
       - name: gh release create
         env:
