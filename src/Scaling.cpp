@@ -18,6 +18,8 @@ namespace BM::Scaling
 			double spellCostScale{ 0.65 };   // fMagicPCSkillCostScale
 			double barterMax{ 3.3 };         // fBarterMax
 			double barterMin{ 2.0 };         // fBarterMin
+			double enchantBase{ 0.005 };     // fEnchantingSkillCostBase
+			double enchantScale{ 0.5 };      // fEnchantingSkillCostScale
 		};
 
 		Settings g_settings;
@@ -30,6 +32,11 @@ namespace BM::Scaling
 		// reading the player's skill briefly see the real value too.
 		std::atomic<int> g_menuScopes{ 0 };
 
+		// The engine's charge-per-use function (26494), taken from the call
+		// site at install: (1 - (skill * base)^scale) * mult * cost^exponent.
+		using ChargePerUse_t = float (*)(float, float);
+		ChargePerUse_t g_charge = nullptr;
+
 		[[nodiscard]] double ReadSetting(const char* a_name, double a_fallback)
 		{
 			auto*       settings = RE::GameSettingCollection::GetSingleton();
@@ -39,6 +46,16 @@ namespace BM::Scaling
 				return a_fallback;
 			}
 			return setting->GetFloat();
+		}
+
+		[[nodiscard]] Curves::PowerDecayFormula EnchantCharge() noexcept
+		{
+			return Curves::EnchantChargeFormula(g_settings.enchantBase, g_settings.enchantScale);
+		}
+
+		[[nodiscard]] double EnchantChargeLimit() noexcept
+		{
+			return Config::Get().enchantChargeLimitFraction * EnchantCharge().Vanilla(Curves::kVanillaCap);
 		}
 
 		[[nodiscard]] RE::ActorValueOwner* PlayerAVO()
@@ -54,8 +71,11 @@ namespace BM::Scaling
 		g_settings.spellCostScale = ReadSetting("fMagicPCSkillCostScale", g_settings.spellCostScale);
 		g_settings.barterMax = ReadSetting("fBarterMax", g_settings.barterMax);
 		g_settings.barterMin = ReadSetting("fBarterMin", g_settings.barterMin);
-		logger::info("Scaling settings: spell cost base {} scale {}, barter max {} min {}", g_settings.spellCostBase,
-			g_settings.spellCostScale, g_settings.barterMax, g_settings.barterMin);
+		g_settings.enchantBase = ReadSetting("fEnchantingSkillCostBase", g_settings.enchantBase);
+		g_settings.enchantScale = ReadSetting("fEnchantingSkillCostScale", g_settings.enchantScale);
+		logger::info("Scaling settings: spell cost base {} scale {}, barter max {} min {}, enchanting cost base {} scale {}",
+			g_settings.spellCostBase, g_settings.spellCostScale, g_settings.barterMax, g_settings.barterMin,
+			g_settings.enchantBase, g_settings.enchantScale);
 	}
 
 	float EffectiveSkill(RE::ActorValue a_av, float a_current) noexcept
@@ -87,6 +107,10 @@ namespace BM::Scaling
 				info && info->GetFullName() ? info->GetFullName() : "?", EffectiveSkill(av, 100.0f),
 				EffectiveSkill(av, 150.0f), EffectiveSkill(av, 400.0f));
 		}
+		const auto charge = EnchantCharge();
+		logger::info("Scaling self-check: enchanting charge factor 100 -> {}, 200 -> {}, 1000 -> {}",
+			charge.Factor(100.0, EnchantChargeLimit()), charge.Factor(200.0, EnchantChargeLimit()),
+			charge.Factor(1000.0, EnchantChargeLimit()));
 	}
 
 	void SetOriginalGetActorValue(std::uintptr_t a_original) noexcept
@@ -131,5 +155,22 @@ namespace BM::Scaling
 		g_menuScopes.fetch_add(1, std::memory_order_relaxed);
 		original(a_menu);
 		g_menuScopes.fetch_sub(1, std::memory_order_relaxed);
+	}
+
+	void SetOriginalChargePerUse(std::uintptr_t a_original) noexcept
+	{
+		g_charge = reinterpret_cast<ChargePerUse_t>(a_original);
+	}
+
+	float ChargePerUse(float a_baseCost, float)
+	{
+		// The engine passes GetActorValue(Enchanting), which is s_eff; FR-30
+		// wants the real skill. Vanilla up to 100; above it the skill-free part
+		// (the engine's own function at skill 0) times form B.
+		const auto real = RealActorValue(RE::ActorValue::kEnchanting);
+		if (real <= Curves::kVanillaCap) {
+			return g_charge(a_baseCost, real);
+		}
+		return static_cast<float>(g_charge(a_baseCost, 0.0f) * EnchantCharge().Factor(real, EnchantChargeLimit()));
 	}
 }

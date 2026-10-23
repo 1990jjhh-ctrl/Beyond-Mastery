@@ -363,10 +363,28 @@ namespace BM::Hooks
 				}
 			}
 
+			// Enchanting charge per use (FR-30): its only call, still to 26494.
+			const auto charge = CheckDetailed(HookSites::kCalculateChargePointsPerUse);
+			if (charge.status != SiteStatus::kReady) {
+				return false;
+			}
+			const auto                             chargeCall = charge.address + HookSites::kChargeCallOffset;
+			static REL::Relocation<std::uintptr_t> chargePerUse{ REL::ID(26494) };  // AE id; AE only
+			if (CallTarget(chargeCall) != chargePerUse.address()) {
+				logger::error(
+					"The charge-per-use call at {:#x} no longer goes to the engine's function -- another "
+					"mod has redirected it and needs a compatibility patch. Not installing formula scaling.",
+					chargeCall);
+				g_signatureMismatch = true;
+				return false;
+			}
+
 			auto& trampoline = SKSE::GetTrampoline();
 			for (const auto call : calls) {
 				trampoline.write_call<5>(call, &Scaling::UpdateSkillList);
 			}
+			Scaling::SetOriginalChargePerUse(chargePerUse.address());
+			trampoline.write_call<5>(chargeCall, &Scaling::ChargePerUse);
 			trampoline.write_branch<5>(clamp.address, &Scaling::GetClampedActorValue);
 			// The original first: the slot is live the moment it is written.
 			Scaling::SetOriginalGetActorValue(slot);

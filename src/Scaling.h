@@ -41,4 +41,12 @@ namespace BM::Scaling
 	// Call-site thunk for StatsMenu::UpdateSkillList: the original, with the
 	// remap off for its duration (FR-29).
 	void UpdateSkillList(RE::StatsMenu* a_menu);
+
+	// The engine's charge-per-use function, taken from its call site. Set
+	// before the call is redirected.
+	void SetOriginalChargePerUse(std::uintptr_t a_original) noexcept;
+
+	// Call-site thunk replacing the engine's charge per use (FR-30): computed
+	// from the real Enchanting skill, vanilla up to 100, form B above.
+	float ChargePerUse(float a_baseCost, float a_skill);
 }
