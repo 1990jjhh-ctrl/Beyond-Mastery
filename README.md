@@ -67,8 +67,19 @@ therefore lower a skill above 100. `bEnableFormulaScaling=false` in
 
 ## Install
 
-Copy `BeyondMastery.dll` to `Data/SKSE/Plugins/`. Requires SKSE64 and Address
-Library for SKSE Plugins.
+Requires [SKSE64](https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files)
+and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444).
+
+Each [release](https://github.com/1990jjhh-ctrl/Beyond-Mastery/releases) has two
+archives with the same files:
+
+- `BeyondMastery-<version>.zip`: install it with a mod manager (Mod Organizer 2,
+  Vortex), or extract it into `Data/`.
+- `BeyondMastery-<version>-SKSE-Plugins.zip`: extract it straight into
+  `Data/SKSE/Plugins/`.
+
+Neither contains `BeyondMastery.ini`: the plugin writes it on first start, and
+an update keeps your settings.
 
 ## Uninstalling
 
