@@ -51,7 +51,7 @@ class TestArchives(unittest.TestCase):
         self.dll = self.dir / "BeyondMastery.dll"
         self.dll.write_bytes(b"MZ fake dll")
         self.out = self.dir / "dist"
-        self.archives = pkg.build_archives(self.dll, "1.2.3", self.out, ROOT)
+        self.archives = pkg.build_archives(self.dll, "1.2.3", self.out, ROOT, b"notices")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -73,13 +73,19 @@ class TestArchives(unittest.TestCase):
                 "SKSE/Plugins/BeyondMastery.dll",
                 "SKSE/Plugins/BeyondMastery/LICENSE",
                 "SKSE/Plugins/BeyondMastery/README.md",
+                "SKSE/Plugins/BeyondMastery/THIRD-PARTY-NOTICES.txt",
             ],
         )
 
     def test_plugins_archive_is_rooted_at_the_plugins_folder(self):
         self.assertEqual(
             self.names(self.out / "BeyondMastery-1.2.3-SKSE-Plugins.zip"),
-            ["BeyondMastery.dll", "BeyondMastery/LICENSE", "BeyondMastery/README.md"],
+            [
+                "BeyondMastery.dll",
+                "BeyondMastery/LICENSE",
+                "BeyondMastery/README.md",
+                "BeyondMastery/THIRD-PARTY-NOTICES.txt",
+            ],
         )
 
     def test_the_dll_is_shipped_unchanged(self):
@@ -99,7 +105,48 @@ class TestArchives(unittest.TestCase):
 
     def test_a_missing_dll_is_refused(self):
         with self.assertRaises(SystemExit):
-            pkg.build_archives(self.dir / "missing.dll", "1.2.3", self.out, ROOT)
+            pkg.build_archives(self.dir / "missing.dll", "1.2.3", self.out, ROOT, b"notices")
+
+
+class TestThirdPartyNotices(unittest.TestCase):
+    """MIT and BSD libraries linked into the DLL require their notices with
+    every binary copy; vcpkg keeps each port's license as share/<port>/copyright."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.share = pathlib.Path(self.tmp.name) / "share"
+        for port, text in (("spdlog", "MIT spdlog notice"), ("xbyak", "BSD xbyak notice")):
+            (self.share / port).mkdir(parents=True)
+            (self.share / port / "copyright").write_text(text)
+        (self.share / "pkgconfig").mkdir()  # no copyright file: not a port
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_every_port_with_a_license_is_included(self):
+        text = pkg.third_party_notices(self.share, ROOT / "lib" / "commonlibsse-ng").decode()
+        self.assertIn("spdlog", text)
+        self.assertIn("MIT spdlog notice", text)
+        self.assertIn("BSD xbyak notice", text)
+        self.assertNotIn("pkgconfig", text)
+
+    def test_commonlibsse_ng_notices_are_included(self):
+        # The original CommonLibSSE (MIT) and the bundled hde64 disassembler.
+        text = pkg.third_party_notices(self.share, ROOT / "lib" / "commonlibsse-ng").decode()
+        self.assertIn("CommonLibSSE-NG", text)
+        mit = (ROOT / "lib" / "commonlibsse-ng" / "licenses" / "LICENSE-MIT.txt").read_text()
+        hde = (ROOT / "lib" / "commonlibsse-ng" / "licenses" / "LICENSE-hde64.txt").read_text()
+        self.assertIn(mit.strip(), text)
+        self.assertIn(hde.strip(), text)
+
+    def test_ports_appear_in_a_stable_order(self):
+        text = pkg.third_party_notices(self.share, ROOT / "lib" / "commonlibsse-ng").decode()
+        self.assertLess(text.index("spdlog"), text.index("xbyak"))
+
+    def test_no_ports_is_refused(self):
+        # Packaging without a build would silently ship no notices.
+        with self.assertRaises(SystemExit):
+            pkg.third_party_notices(pathlib.Path(self.tmp.name) / "missing", ROOT / "lib" / "commonlibsse-ng")
 
 
 if __name__ == "__main__":
