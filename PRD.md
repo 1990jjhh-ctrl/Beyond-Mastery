@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.7 — Approved** (2026-10-23; v1.7 rewords the Reset Skill confirmation — FR-31)
+Status: **v1.8 — Approved** (2026-10-23; v1.8 makes the first level past a raised limit cost XP — FR-8)
 Date: 2026-10-23
 Owner: Joel Hirsbrunner
 
@@ -101,7 +101,7 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 
 ### 6.3 Leveling above 100
 
-- **FR-8** Above 100, skills gain levels through normal XP from use, up to their individual cap.
+- **FR-8** Above 100, skills gain levels through normal XP from use, up to their individual cap. XP earned while a skill sits at its limit is not carried past it: an Upgrade starts the next level from zero progress, so that level is earned like any other.
 - **FR-9** XP needed per level follows the vanilla formula (`ImproveMult × level^fSkillUseCurve + ImproveOffset`), extended past 100. XP *gained* for a skill at level s > 100 is multiplied by `f^(T−1)` with `T = floor(s / 100)`, with `f = fXPGainFactorPerTier` (INI, range (0, 1.0], default **1.0** = vanilla). Values above 1.0 are clamped to 1.0.
 - **FR-10** XP accumulation must remain correct at large thresholds. If float precision loss becomes relevant (threshold ≳ 1.6 × 10⁷), the plugin tracks per-skill progress internally as `double`.
 - **FR-11** Character XP per skill level-up above 100 scales as in vanilla (`fXPPerSkillRank × new skill level`), not clamped. Optional clamp to the level-100 value via INI (`bClampCharXPAbove100`, default off).

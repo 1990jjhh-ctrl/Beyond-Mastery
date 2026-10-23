@@ -11,15 +11,20 @@ Supported runtimes: AE 1.6.x and 1.7.x. SE 1.5.97 is out of scope for now
 (PRD §3): the plugin loads there but stays inactive.
 
 Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
-- The plugin loads.
+- The plugin loads, with no warnings in its log.
 - Every patch site resolves to the address `scripts/verify_sites.py` predicts
   ([docs/hook-points.md](docs/hook-points.md) §9a).
-- Skills level normally and stop at their cap.
+- Skills level normally and stop at their limit.
+- The Legendary menu: Upgrade pays with perks, dragon souls and black soul
+  gems (The Black Star included). It shows what is missing when the player
+  can't afford it, and names the level still to reach below the limit.
+- Reset Skill, re-training, and dragon-soul gates paid again on each climb.
+- Caps and gates survive save and reload.
 
 Implemented, but not yet verified in-game:
-- The Legendary menu (Reset Skill / Upgrade).
-- Paying for a cap raise with perks, dragon souls and black soul gems.
-- Dragon-soul gates.
+- The reworded Reset Skill confirmation (FR-31).
+- The first level past a raised limit costs XP (FR-8).
+- The conflict warning (FR-20).
 
 Not yet implemented: formula scaling above 100, FR-10's double XP accumulator
 and FR-11's character-XP clamp.

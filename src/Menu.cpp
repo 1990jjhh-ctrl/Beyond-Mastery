@@ -136,6 +136,25 @@ namespace BM::Menu
 			logger::info("Reset Skill: {} handed to vanilla Legendary", SkillName(a_skill));
 		}
 
+		// FR-8: XP keeps arriving while a skill sits at its limit, and the engine
+		// parks it just short of the next level, so the first level past a new
+		// limit would be free. Upgrade starts that level from zero instead.
+		// PlayerSkills lists the skills in the same order as Skills.h.
+		using PlayerSkill = RE::PlayerCharacter::PlayerSkills::Data::Skill;
+		static_assert(PlayerSkill::kTotal == Skills::kCount);
+		static_assert(PlayerSkill::kEnchanting == Skills::kLastAV - Skills::kFirstAV);
+
+		void ClearLevelProgress(RE::ActorValue a_skill)
+		{
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* skills = player ? player->GetInfoRuntimeData().skills : nullptr;
+			if (!skills || !skills->data) {
+				logger::warn("Player skill data unavailable; {} keeps its progress", SkillName(a_skill));
+				return;
+			}
+			skills->data->skills[Skills::ToIndex(a_skill)].xp = 0.0f;
+		}
+
 		void Apply(RE::ActorValue a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
 		{
 			switch (Resources::Spend(a_upgrade.cost, a_gems)) {
@@ -151,6 +170,7 @@ namespace BM::Menu
 			const auto index = Skills::ToIndex(a_skill);
 			auto&      state = State::Get();
 			state.ApplyUpgrade(index, a_upgrade);
+			ClearLevelProgress(a_skill);
 			const auto limit = Curves::Limit(state.Cap(index), state.GatesPaid(index));
 			logger::info("Upgrade: {} cap {} gates {} limit {}", SkillName(a_skill), state.Cap(index),
 				state.GatesPaid(index), limit);
