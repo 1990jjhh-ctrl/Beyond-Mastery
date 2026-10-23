@@ -7,7 +7,7 @@ namespace BM
 	struct Config
 	{
 		// [General]
-		double                   xpGainFactorPerTier{ 1.0 };    // FR-9, range (0, 1]
+		bool                     scaleXPGainAbove100{ false };  // FR-9
 		bool                     clampCharXPAbove100{ false };  // FR-11
 		bool                     warnOnConflict{ true };        // FR-20
 		std::vector<std::string> knownConflicts{ "SkyrimUncapper", "Experience", "CustomSkills" };

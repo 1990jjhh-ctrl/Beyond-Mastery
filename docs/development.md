@@ -109,7 +109,7 @@ Consequences:
 
 - Resolve addresses through Address Library IDs only, never hardcoded offsets (PRD §7). SE and AE IDs differ, and they often need separate wrappers because the surrounding instructions differ.
 - Check the byte signature at every patch site before writing. On a mismatch, log and skip rather than patching blind. A failed signature check is also the second signal for conflict detection (hook-points.md §8).
-- Don't install a hook that the current config makes a no-op. Examples: the XP-gain hook at the default `f = 1.0`, and the character-XP hook while `bClampCharXPAbove100` is false. Fewer hooks means fewer conflicts.
+- Don't install a hook that the current config makes a no-op. Examples: the skill XP gain hook while `bScaleXPGainAbove100` is off, and the character-XP hook while `bClampCharXPAbove100` is false. Fewer hooks means fewer conflicts.
 - Treat IDs and offsets from hook-points.md as *facts about the binary to re-verify*, not as working code. The Rust uncapper referenced there has no license file, so nothing may be copied from it.
 - Derive formula constants from the disassembly, or from GMSTs read at runtime, not from UESP values.
 - Reach any member of a game structure whose layout differs between runtimes through CommonLibSSE-NG's runtime accessors: `RUNTIME_*_ACCESSOR*` (e.g. `AsActorValueOwner()`), `GetXRuntimeData()` or `REL::RelocateMember*`. Never use a hardcoded offset or a direct member. The plugin declares `StructCompatibility::Independent`, and that claim only holds because one binary resolves every such offset from the running game's version.

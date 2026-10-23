@@ -27,23 +27,28 @@ The hook returns the player's cap for the given skill from our co-save state. Si
 
 Compatibility note: the reference mod overwrites ≥14 bytes here and NOPs the last two, as agreed with the eXPerience author (Nexus 17751). Same site = hard conflict with other uncappers → FR-20 detection.
 
-## 2. Skill XP gain (FR-9, f^(T−1))
+## 2. Skill XP gain (FR-9, √(100/s))
 
 | What | SE | AE | Conf. |
 |---|---|---|---|
-| XP gain computed as `base × mult + offset` before it is added | 40554+0xDC | 41561+0xF1 | H |
+| Skill XP gained from use, `use mult × points + use offset`, before it is added | 40554+0xDC | 41561+0xF1 | H |
 
-The hook receives the skill and both XP components and returns the total. We multiply by `f^(T−1)` for base level ≥ 200 (T ≥ 2). At default f = 1.0 the hook is a no-op and can stay uninstalled.
+The routine (41561) fetches the skill's AVSK values into its frame: `+0x30` use
+mult and `+0x34` use offset (AVSK +0, +4) for the XP a use gives, `+0x38`
+improve mult and `+0x3C` improve offset (AVSK +8, +0xC) for the XP needed per
+level. The hook replaces the first computation only: the stub passes the skill,
+use mult, points and use offset, and the callee returns the vanilla value times
+`√(100/s)` for base level s > 100 — the slope of form A. With
+`bScaleXPGainAbove100` off (the default) the hook is not installed.
 
-**Known gap.** Just above this site the routine branches on its sixth argument
-(`cmp BYTE PTR [rsp+0x1d8], 0; je`). The arm we patch computes
-`ImproveMult × points + ImproveOffset`; the other arm stores the raw `points`
-with no multiplier and is **not** hooked, so `f^(T−1)` does not apply to
-whatever calls the engine with that flag clear. Reaching it needs a second
-patch at that store (9 bytes, `movss [rsp+0x1b8], xmm6`). Unresolved: what the
-flag means and which callers clear it. Until that is known the factor is a
-reduction some XP sources escape, which under-applies the penalty rather than
-over-applying it.
+The routine has two callers, and a byte argument picks the branch:
+
+- **`40488` = `PlayerCharacter::AddSkillExperience`** passes 1: XP from using a
+  skill (and `player.advskill`) goes through the hooked computation.
+- **`41562`** passes 0 and loops: for each whole level it adds exactly
+  `threshold − current XP`. That is the engine's "increase the skill by N
+  levels" — trainers, skill books — which must stay exact, so the raw branch is
+  deliberately left unhooked.
 
 ## 3. Character XP per skill-up (FR-11)
 

@@ -260,25 +260,37 @@ namespace BM::Hooks
 		return g_scalingInstalled;
 	}
 
-	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_improveMult, float a_points,
-		float a_improveOffset) noexcept
+	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_useMult, float a_points, float a_useOffset) noexcept
 	{
-		const float vanilla = a_improveMult * a_points + a_improveOffset;
+		const float vanilla = a_useMult * a_points + a_useOffset;
 		if (!Skills::IsSkill(a_av)) {
 			return vanilla;
 		}
 
-		// The base level, deliberately not the current one: Plan 3 remaps the
-		// current value for the formula scaling, and the tier here must follow
-		// the real level (FR-9).
+		// The base level, deliberately not the current one: the current value
+		// is remapped for the formula scaling, and the factor must follow the
+		// real level (FR-9).
 		const auto* player = RE::PlayerCharacter::GetSingleton();
 		if (player == nullptr) {
 			return vanilla;
 		}
 		const auto level = player->AsActorValueOwner()->GetBaseActorValue(a_av);
 
-		const auto factor = Curves::XPGainMultiplier(level, Config::Get().xpGainFactorPerTier);
-		return static_cast<float>(vanilla * factor);
+		const auto  factor = Curves::XPGainMultiplier(level);
+		const float scaled = static_cast<float>(vanilla * factor);
+
+		// One line per skill and level, so the factor can be checked in the
+		// log without a line per swing. Main thread only.
+		static std::array<int, Skills::kCount> loggedLevel{};
+		const auto                             index = Skills::ToIndex(a_av);
+		if (factor < 1.0 && loggedLevel[index] != static_cast<int>(level)) {
+			loggedLevel[index] = static_cast<int>(level);
+			const auto* info = RE::ActorValueList::GetActorValueInfo(a_av);
+			const auto* name = info ? info->GetFullName() : nullptr;
+			logger::info("{} {}: skill XP from use {} -> {} (x{:.3f})", name && *name ? name : "?", level, vanilla,
+				scaled, factor);
+		}
+		return scaled;
 	}
 
 	bool XPGainHookInstalled() noexcept
@@ -328,7 +340,7 @@ namespace BM::Hooks
 				return UseAE();  // SE's patch shape is unverified; see HookSites.h
 			}
 			if (&a_site == &HookSites::kImprovePlayerSkillPoints) {
-				return UseAE() && Config::Get().xpGainFactorPerTier < 1.0;
+				return UseAE() && Config::Get().scaleXPGainAbove100;
 			}
 			if (&a_site == &HookSites::kImproveLevelExpBySkillLevel) {
 				return UseAE() && Config::Get().clampCharXPAbove100;
@@ -614,15 +626,10 @@ namespace BM::Hooks
 			g_capHookInstalled = InstallCapHook(capStatus.address);
 		}
 
-		// XP gain factor (FR-9). At the default f = 1.0 the hook would return
-		// exactly the vanilla value, so it is not installed at all: fewer
-		// hooks, fewer conflicts (hook-points.md §2).
-		const auto factor = Config::Get().xpGainFactorPerTier;
-		if (factor >= 1.0) {
-			logger::info(
-				"fXPGainFactorPerTier is {}, so the XP gain hook is a no-op and is not "
-				"installed",
-				factor);
+		// Skill XP gain above 100 (FR-9). Off by default, where it is vanilla,
+		// so the hook is not installed at all: fewer hooks, fewer conflicts.
+		if (!Config::Get().scaleXPGainAbove100) {
+			logger::info("bScaleXPGainAbove100 is off, so the skill XP gain hook is not installed");
 		} else if (!UseAE()) {
 			logger::warn(
 				"The XP gain factor is not yet available on SE 1.5.97: that patch shape "

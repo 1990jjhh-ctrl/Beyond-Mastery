@@ -47,11 +47,10 @@ namespace BM::Hooks
 	// True once the cap site has actually been patched.
 	[[nodiscard]] bool CapHookInstalled() noexcept;
 
-	// Callee of the XP-gain trampoline: the vanilla mult * points + offset,
-	// scaled by f^(T-1) for the skill's current tier (FR-9). Not installed at
-	// all while fXPGainFactorPerTier is 1.0, where it would be a no-op.
-	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_improveMult, float a_points,
-		float a_improveOffset) noexcept;
+	// Callee of the XP-gain trampoline: the skill XP gained from use, the
+	// vanilla use mult * points + use offset, scaled by sqrt(100 / level) above
+	// 100 (FR-9). Installed only with bScaleXPGainAbove100.
+	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_useMult, float a_points, float a_useOffset) noexcept;
 
 	[[nodiscard]] bool XPGainHookInstalled() noexcept;
 

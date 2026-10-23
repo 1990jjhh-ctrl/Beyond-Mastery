@@ -193,16 +193,16 @@ namespace BM::Curves
 	// Skill XP gain above 100 (FR-9)
 	// ---------------------------------------------------------------------
 
-	// Multiplier on XP gained at base skill level a_level: f^(T-1) for level >= 100,
-	// 1 below. f is clamped to (0, 1].
-	[[nodiscard]] inline double XPGainMultiplier(double a_level, double a_factorPerTier) noexcept
+	// Multiplier on the skill XP gained from use at base level a_level:
+	// sqrt(100 / level) above 100 -- the slope of form A, so a level earns XP
+	// at the rate it adds effect -- and 1 up to 100. Continuous at 100, never
+	// above 1, never increasing.
+	[[nodiscard]] inline double XPGainMultiplier(double a_level) noexcept
 	{
-		const double f = std::clamp(a_factorPerTier, 1e-6, 1.0);
-		const auto   t = Tier(a_level);
-		if (t <= 1u) {
+		if (!(a_level > kVanillaCap)) {
 			return 1.0;
 		}
-		return std::pow(f, static_cast<double>(t - 1u));
+		return std::sqrt(kVanillaCap / a_level);
 	}
 
 	// XP needed to reach the next level of a skill at a_level, the vanilla

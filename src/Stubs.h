@@ -72,14 +72,17 @@ namespace BM::Stubs
 	//
 	// Replaces the three instructions that compute the XP to add:
 	//
-	//   movss xmm0, [rsp+0x30]   ; ImproveMult, filled by the call just above
+	//   movss xmm0, [rsp+0x30]   ; the skill's AVSK use mult, filled by the call just above
 	//   mulss xmm0, xmm6         ; the points argument, saved in the prologue
-	//   addss xmm0, [rsp+0x34]   ; ImproveOffset
+	//   addss xmm0, [rsp+0x34]   ; the skill's AVSK use offset
+	//
+	// (The improve mult and offset, at +0x38 and +0x3C, feed the XP needed per
+	// level later in the routine and are not touched.)
 	//
 	// 16 bytes, leaving the result in xmm0 exactly as the engine expects.
 
-	inline constexpr std::uint32_t kImproveMultSlot = 0x30;
-	inline constexpr std::uint32_t kImproveOffsetSlot = 0x34;
+	inline constexpr std::uint32_t kUseMultSlot = 0x30;
+	inline constexpr std::uint32_t kUseOffsetSlot = 0x34;
 	inline constexpr std::size_t   kXPGainLength = 16;
 
 	struct XPGainStub : Xbyak::CodeGenerator
@@ -91,9 +94,9 @@ namespace BM::Stubs
 			// kStubFrameAdjust, not kStubReserve: the 5-byte call at the patch
 			// site pushed a return address before this sub rsp, so the
 			// engine's frame is a further 8 bytes away.
-			movss(xmm1, ptr[rsp + kStubFrameAdjust + kImproveMultSlot]);    // arg 1: ImproveMult
-			movaps(xmm2, xmm6);                                             // arg 2: points
-			movss(xmm3, ptr[rsp + kStubFrameAdjust + kImproveOffsetSlot]);  // arg 3: ImproveOffset
+			movss(xmm1, ptr[rsp + kStubFrameAdjust + kUseMultSlot]);    // arg 1: use mult
+			movaps(xmm2, xmm6);                                         // arg 2: points
+			movss(xmm3, ptr[rsp + kStubFrameAdjust + kUseOffsetSlot]);  // arg 3: use offset
 			mov(rax, a_callee);
 			call(rax);  // result in xmm0, where the engine wants it
 			add(rsp, kStubReserve);

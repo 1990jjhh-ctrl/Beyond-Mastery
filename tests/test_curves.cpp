@@ -69,11 +69,24 @@ static void TestCosts()
 
 static void TestXPGain()
 {
-	CHECK_NEAR(XPGainMultiplier(50, 0.5), 1.0, 1e-12);
-	CHECK_NEAR(XPGainMultiplier(150, 0.5), 1.0, 1e-12);
-	CHECK_NEAR(XPGainMultiplier(200, 0.5), 0.5, 1e-12);
-	CHECK_NEAR(XPGainMultiplier(350, 0.5), 0.25, 1e-12);
-	CHECK_NEAR(XPGainMultiplier(350, 2.0), 1.0, 1e-12);  // clamped to <= 1
+	// FR-9: sqrt(100/s) above 100 -- the slope of form A -- and 1 up to 100.
+	CHECK_NEAR(XPGainMultiplier(50), 1.0, 1e-12);
+	CHECK_NEAR(XPGainMultiplier(150), std::sqrt(100.0 / 150.0), 1e-12);  // 0.816
+	CHECK_NEAR(XPGainMultiplier(200), std::sqrt(0.5), 1e-12);            // 0.707
+	CHECK_NEAR(XPGainMultiplier(400), 0.5, 1e-12);
+	// Continuous at 100, and it is form A's slope wherever it applies.
+	CHECK_NEAR(XPGainMultiplier(100.000001), 1.0, 1e-6);
+	for (double s : { 120.0, 250.0, 1000.0 }) {
+		const double slope = (SqrtEffectiveSkill(s + 1e-4) - SqrtEffectiveSkill(s - 1e-4)) / 2e-4;
+		CHECK_NEAR(XPGainMultiplier(s), slope, 1e-6);
+	}
+	// Never above 1 and never increasing.
+	double prev = 1.0;
+	for (double s = 0.0; s <= 1e5; s += 37.0) {
+		const double m = XPGainMultiplier(s);
+		CHECK(m > 0.0 && m <= 1.0 && m <= prev);
+		prev = m;
+	}
 }
 
 static void TestFormA()
@@ -158,8 +171,7 @@ static void TestVanillaParityAtDefaults()
 {
 	// Review Focus 3: at defaults every hooked value must equal vanilla exactly.
 	CHECK_EQ(ClampLevelToCap(100.0, 100), 100.0);
-	CHECK_EQ(XPGainMultiplier(100.0, 1.0), 1.0);
-	CHECK_EQ(XPGainMultiplier(400.0, 1.0), 1.0);  // f = 1.0 is vanilla at every level
+	CHECK_EQ(XPGainMultiplier(100.0), 1.0);  // the switch is off by default; at 100 it is 1 anyway
 	CHECK_EQ(SqrtEffectiveSkill(100.0), 100.0);
 }
 
@@ -184,12 +196,10 @@ static void TestXPThreshold()
 static void TestXPGainMultiplierAcrossLegendary()
 {
 	// Review Focus 4: after Legendary the level is 15 while the cap stays high.
-	CHECK_EQ(XPGainMultiplier(15.0, 0.5), 1.0);  // below 100 -> vanilla
-	CHECK_EQ(XPGainMultiplier(99.0, 0.5), 1.0);
-	CHECK_EQ(XPGainMultiplier(100.0, 0.5), 1.0);  // T=1 -> f^0
-	CHECK_NEAR(XPGainMultiplier(200.0, 0.5), 0.5, 1e-12);
-	CHECK_NEAR(XPGainMultiplier(300.0, 0.5), 0.25, 1e-12);
-	CHECK_EQ(XPGainMultiplier(300.0, 1.0), 1.0);  // default f = vanilla everywhere
+	CHECK_EQ(XPGainMultiplier(15.0), 1.0);  // below 100 -> vanilla, never a boost
+	CHECK_EQ(XPGainMultiplier(99.0), 1.0);
+	CHECK_EQ(XPGainMultiplier(100.0), 1.0);
+	CHECK_NEAR(XPGainMultiplier(300.0), std::sqrt(100.0 / 300.0), 1e-12);
 }
 
 static void TestFlatPerkCostAndAffordability()

@@ -106,9 +106,9 @@ static void TestXPGainStubReadsTheEngineFrame()
 	CHECK_EQ(disps.size(), std::size_t{ 2 });
 	if (disps.size() == 2) {
 		CHECK_EQ(disps[0], static_cast<std::uint8_t>(
-							   BM::Stubs::kStubFrameAdjust + BM::Stubs::kImproveMultSlot));
+							   BM::Stubs::kStubFrameAdjust + BM::Stubs::kUseMultSlot));
 		CHECK_EQ(disps[1], static_cast<std::uint8_t>(
-							   BM::Stubs::kStubFrameAdjust + BM::Stubs::kImproveOffsetSlot));
+							   BM::Stubs::kStubFrameAdjust + BM::Stubs::kUseOffsetSlot));
 	}
 
 	// The skill actor value comes from esi, which is callee-saved and so still

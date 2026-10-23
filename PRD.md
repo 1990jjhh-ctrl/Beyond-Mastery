@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.9 — Approved** (2026-10-23; v1.9 defers FR-10's double accumulator behind a warning and fixes FR-28's form per skill, both approved with the formula-scaling plan)
+Status: **v1.10 — Approved** (2026-10-23; v1.10 replaces FR-9's stepped `f^(T−1)` with the continuous slope of form A, as an on/off switch)
 Date: 2026-10-23
 Owner: Joel Hirsbrunner
 
@@ -102,7 +102,7 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 ### 6.3 Leveling above 100
 
 - **FR-8** Above 100, skills gain levels through normal XP from use, up to their individual cap. Raising a limit never grants a level: after an Upgrade the next level needs its full vanilla XP (FR-9), starting from zero progress.
-- **FR-9** XP needed per level follows the vanilla formula (`ImproveMult × level^fSkillUseCurve + ImproveOffset`), extended past 100. XP *gained* for a skill at level s > 100 is multiplied by `f^(T−1)` with `T = floor(s / 100)`, with `f = fXPGainFactorPerTier` (INI, range (0, 1.0], default **1.0** = vanilla). Values above 1.0 are clamped to 1.0.
+- **FR-9** XP needed per level follows the vanilla formula (`ImproveMult × level^fSkillUseCurve + ImproveOffset`), extended past 100. Optionally (`bScaleXPGainAbove100`, default **off** = vanilla), the skill XP *gained from using* a skill at base level s > 100 is multiplied by `√(100/s)`: the slope of form A, so a level earns XP at the rate it adds effect. The factor is 1 at 100 and continuous (0.82 at 150, 0.71 at 200, 0.5 at 400). Whole-level grants (trainers, skill books) stay exact: they give precisely the XP missing to the next level.
 - **FR-10** XP accumulation must remain correct at large thresholds. Below a threshold of 2²⁴ (≈ 1.68 × 10⁷, around level 3,500) float accumulation is exact; above it the plugin logs a warning once per skill and session. A `double` accumulator is deferred until a reachable level needs it.
 - **FR-11** Character XP per skill level-up above 100 scales as in vanilla (`fXPPerSkillRank × new skill level`), not clamped. Optional clamp to the level-100 value via INI (`bClampCharXPAbove100`, default off).
 
@@ -122,7 +122,7 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 ### 6.6 Configuration (INI)
 
 - **FR-18** `BeyondMastery.ini` next to the DLL, at minimum:
-  - `fXPGainFactorPerTier` (float, range (0, 1.0], default 1.0)
+  - `bScaleXPGainAbove100` (bool, default false)
   - `bClampCharXPAbove100` (bool, default false)
   - `bWarnOnConflict` (bool, default true)
 

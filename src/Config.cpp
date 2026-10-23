@@ -54,7 +54,9 @@ namespace BM
 			logger::info("{} not found, using defaults", kPath);
 		}
 
-		xpGainFactorPerTier = ini.GetDoubleValue("General", "fXPGainFactorPerTier", xpGainFactorPerTier);
+		scaleXPGainAbove100 = ini.GetBoolValue("General", "bScaleXPGainAbove100", scaleXPGainAbove100);
+		// Replaced by bScaleXPGainAbove100 (PRD v1.10); dropped from the file.
+		ini.Delete("General", "fXPGainFactorPerTier", true);
 		clampCharXPAbove100 = ini.GetBoolValue("General", "bClampCharXPAbove100", clampCharXPAbove100);
 		warnOnConflict = ini.GetBoolValue("General", "bWarnOnConflict", warnOnConflict);
 		knownConflicts = SplitList(ini.GetValue("General", "sKnownConflicts", JoinList(knownConflicts).c_str()));
@@ -64,18 +66,14 @@ namespace BM
 		barterMinRatio = ini.GetDoubleValue("Scaling", "fBarterMinRatio", barterMinRatio);
 		enchantChargeLimitFraction = ini.GetDoubleValue("Scaling", "fEnchantChargeLimitFraction", enchantChargeLimitFraction);
 
-		// Validate (FR-9: f in (0, 1]).
-		if (xpGainFactorPerTier <= 0.0 || xpGainFactorPerTier > 1.0) {
-			logger::warn("fXPGainFactorPerTier = {} out of range (0, 1], clamping", xpGainFactorPerTier);
-			xpGainFactorPerTier = std::clamp(xpGainFactorPerTier, 1e-6, 1.0);
-		}
+		// Validate.
 		spellCostLimit = std::clamp(spellCostLimit, 0.0, 0.59);
 		barterMinRatio = std::max(barterMinRatio, 1.0);
 		enchantChargeLimitFraction = std::clamp(enchantChargeLimitFraction, 0.01, 0.99);
 
 		// Write back a complete, commented file.
-		ini.SetDoubleValue("General", "fXPGainFactorPerTier", xpGainFactorPerTier,
-			"; XP gained above 100 is multiplied by f^(T-1), T = floor(skill/100). Range (0, 1]. 1.0 = vanilla curve.");
+		ini.SetBoolValue("General", "bScaleXPGainAbove100", scaleXPGainAbove100,
+			"; Above 100, skill XP gained from use is multiplied by sqrt(100/skill) (0.71 at 200, 0.5 at 400). Trainers and skill books stay exact.");
 		ini.SetBoolValue("General", "bClampCharXPAbove100", clampCharXPAbove100,
 			"; Clamp character XP from skill-ups above 100 to the level-100 value.");
 		ini.SetBoolValue("General", "bWarnOnConflict", warnOnConflict,
@@ -95,7 +93,7 @@ namespace BM
 			logger::warn("Could not write {}", kPath);
 		}
 
-		logger::info("Config: f={}, clampCharXP={}, warnOnConflict={}, scaling={}, spellLimit={}, barterRatio={}, enchantChargeFraction={}",
-			xpGainFactorPerTier, clampCharXPAbove100, warnOnConflict, enableFormulaScaling, spellCostLimit, barterMinRatio, enchantChargeLimitFraction);
+		logger::info("Config: scaleXPGain={}, clampCharXP={}, warnOnConflict={}, scaling={}, spellLimit={}, barterRatio={}, enchantChargeFraction={}",
+			scaleXPGainAbove100, clampCharXPAbove100, warnOnConflict, enableFormulaScaling, spellCostLimit, barterMinRatio, enchantChargeLimitFraction);
 	}
 }
