@@ -183,7 +183,7 @@ All engine-side via CommonLibSSE-NG:
 | Perk points | `PlayerCharacter::perkCount` (uint8, max 255). Layout changed at 1.6.629 — reach it only through NG's runtime accessor (development.md, "Working on hooks") |
 | Dragon souls | actor value `ActorValue::kDragonSouls` |
 | Filled black soul gems | inventory scan: `TESSoulGem` with soul level Grand and `canHoldNPCSoul`, filled via form or `ExtraSoul`. The Black Star: empty the soul, keep the item |
-| Skill level / XP state | `PlayerCharacter::skills->data->skills[i]` (`level`, `xp`, `levelThreshold`) |
+| Skill level / XP state | `PlayerCharacter::skills->data->skills[i]` (`level`, `xp`, `levelThreshold`). When a level-up reaches the cap, the engine sets `levelThreshold` to 0 (1.7.104: 0x14078df1f), and at the cap it adds no XP. After a raise the threshold must be restored, or the next level is free (FR-8) |
 | Menu with dynamic text and buttons | `RE::MessageBoxData` with an `IMessageBoxCallback` (body text and button labels built at runtime; at most three buttons, so no paging) |
 | Persistence | SKSE serialization interface (co-save), record per skill: cap, gates paid this climb |
 

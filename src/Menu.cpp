@@ -136,23 +136,43 @@ namespace BM::Menu
 			logger::info("Reset Skill: {} handed to vanilla Legendary", SkillName(a_skill));
 		}
 
-		// FR-8: XP keeps arriving while a skill sits at its limit, and the engine
-		// parks it just short of the next level, so the first level past a new
-		// limit would be free. Upgrade starts that level from zero instead.
+		// FR-8: when a level-up reaches the limit, the engine sets that skill's
+		// levelThreshold to 0 and stops; at the limit it then adds no XP at all
+		// (SkyrimSE.exe 1.7.104, 0x14078df1f and 0x14078dd33). Left at 0, the
+		// first XP gain after an Upgrade satisfies xp >= 0 and the level is
+		// free. Upgrade restores the threshold the engine itself computes for
+		// the level -- improveMult x level^fSkillUseCurve + improveOffset, with
+		// the AVSK defaults 1 and 0 -- and starts that level from zero.
 		// PlayerSkills lists the skills in the same order as Skills.h.
 		using PlayerSkill = RE::PlayerCharacter::PlayerSkills::Data::Skill;
 		static_assert(PlayerSkill::kTotal == Skills::kCount);
 		static_assert(PlayerSkill::kEnchanting == Skills::kLastAV - Skills::kFirstAV);
 
-		void ClearLevelProgress(RE::ActorValue a_skill)
+		constexpr const char* kSkillUseCurveSetting = "fSkillUseCurve";
+
+		void RestartLevel(RE::ActorValue a_skill)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			auto* skills = player ? player->GetInfoRuntimeData().skills : nullptr;
-			if (!skills || !skills->data) {
-				logger::warn("Player skill data unavailable; {} keeps its progress", SkillName(a_skill));
+			auto* settings = RE::GameSettingCollection::GetSingleton();
+			auto* curve = settings ? settings->GetSetting(kSkillUseCurveSetting) : nullptr;
+			if (!skills || !skills->data || !curve) {
+				logger::error("Player skill data or {} unavailable; {}'s next level may be free",
+					kSkillUseCurveSetting, SkillName(a_skill));
 				return;
 			}
-			skills->data->skills[Skills::ToIndex(a_skill)].xp = 0.0f;
+
+			const auto* info = RE::ActorValueList::GetActorValueInfo(a_skill);
+			const auto* avsk = info ? info->skill : nullptr;
+			const auto  level = BaseLevel(a_skill);
+			const auto  threshold = Curves::XPThreshold(level, avsk ? avsk->improveMult : 1.0,
+				curve->GetFloat(), avsk ? avsk->improveOffset : 0.0);
+
+			auto& data = skills->data->skills[Skills::ToIndex(a_skill)];
+			logger::info("{} at {}: threshold {} -> {}, xp {} -> 0", SkillName(a_skill), level,
+				data.levelThreshold, threshold, data.xp);
+			data.levelThreshold = static_cast<float>(threshold);
+			data.xp = 0.0f;
 		}
 
 		void Apply(RE::ActorValue a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
@@ -170,7 +190,7 @@ namespace BM::Menu
 			const auto index = Skills::ToIndex(a_skill);
 			auto&      state = State::Get();
 			state.ApplyUpgrade(index, a_upgrade);
-			ClearLevelProgress(a_skill);
+			RestartLevel(a_skill);
 			const auto limit = Curves::Limit(state.Cap(index), state.GatesPaid(index));
 			logger::info("Upgrade: {} cap {} gates {} limit {}", SkillName(a_skill), state.Cap(index),
 				state.GatesPaid(index), limit);
