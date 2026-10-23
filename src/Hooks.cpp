@@ -197,10 +197,26 @@ namespace BM::Hooks
 		// Legendary declined, because then the level never dropped.
 		if (Skills::IsSkill(a_av)) {
 			const auto index = Skills::ToIndex(a_av);
+			auto*      player = RE::PlayerCharacter::GetSingleton();
 			if (state.GatesPaid(index) > 0) {
-				const auto* player = RE::PlayerCharacter::GetSingleton();
 				if (player && player->AsActorValueOwner()->GetBaseActorValue(a_av) < 100.0f) {
 					state.ClearGates(index);
+				}
+			}
+
+			// FR-10: below 2^24 float XP accumulates exactly. Past it, say so
+			// once per skill and session -- a double accumulator is deferred
+			// until a reachable level needs it.
+			static std::array<bool, Skills::kCount> warned{};
+			auto*                                   skills = player ? player->GetInfoRuntimeData().skills : nullptr;
+			if (!warned[index] && skills && skills->data) {
+				const auto threshold = skills->data->skills[index].levelThreshold;
+				if (Curves::ThresholdNeedsDouble(threshold)) {
+					warned[index] = true;
+					logger::warn(
+						"Skill {} needs {} XP for its next level, past float precision (2^24); "
+						"XP gains may round (FR-10)",
+						index, threshold);
 				}
 			}
 		}

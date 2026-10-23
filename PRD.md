@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.8 — Approved** (2026-10-23; v1.8 makes the first level past a raised limit cost XP — FR-8)
+Status: **v1.9 — Approved** (2026-10-23; v1.9 defers FR-10's double accumulator behind a warning and fixes FR-28's form per skill, both approved with the formula-scaling plan)
 Date: 2026-10-23
 Owner: Joel Hirsbrunner
 
@@ -103,7 +103,7 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 
 - **FR-8** Above 100, skills gain levels through normal XP from use, up to their individual cap. Raising a limit never grants a level: after an Upgrade the next level needs its full vanilla XP (FR-9), starting from zero progress.
 - **FR-9** XP needed per level follows the vanilla formula (`ImproveMult × level^fSkillUseCurve + ImproveOffset`), extended past 100. XP *gained* for a skill at level s > 100 is multiplied by `f^(T−1)` with `T = floor(s / 100)`, with `f = fXPGainFactorPerTier` (INI, range (0, 1.0], default **1.0** = vanilla). Values above 1.0 are clamped to 1.0.
-- **FR-10** XP accumulation must remain correct at large thresholds. If float precision loss becomes relevant (threshold ≳ 1.6 × 10⁷), the plugin tracks per-skill progress internally as `double`.
+- **FR-10** XP accumulation must remain correct at large thresholds. Below a threshold of 2²⁴ (≈ 1.68 × 10⁷, around level 3,500) float accumulation is exact; above it the plugin logs a warning once per skill and session. A `double` accumulator is deferred until a reachable level needs it.
 - **FR-11** Character XP per skill level-up above 100 scales as in vanilla (`fXPPerSkillRank × new skill level`), not clamped. Optional clamp to the level-100 value via INI (`bClampCharXPAbove100`, default off).
 
 ### 6.4 Reset Skill (vanilla Legendary)
@@ -178,7 +178,7 @@ Spell cost skill factor, for comparison:
 - **FR-25** Spell cost: the 0.25 limit applies to the **skill factor only**. Perk, equipment and dual-cast multipliers still apply on top, as in vanilla.
 - **FR-26** Barter: the limit applies to the **final buy/sell ratio** after skill, perks and Fortify Barter. For the same item, buy price ≥ **1.2 ×** sell price. Above 100, the skill price factor follows form B with L chosen so that this ratio approaches 1.2. The final ratio is additionally clamped at ≥ 1.2.
 - **FR-27** Existing vanilla clamps (e.g. armor damage-reduction cap 80%, pickpocket max chance, lockpicking sweet-spot limits) stay in place. Form A only feeds them a smaller effective skill.
-- **FR-28** Limits and the scaling form per formula are configurable in the INI. Defaults as above.
+- **FR-28** The limits are configurable in the INI (`fSpellCostLimit`, `fBarterMinRatio`, `fEnchantChargeLimitFraction`), and `bEnableFormulaScaling` switches all scaling off. The form per skill is fixed (form A, or form B for magic schools, Speech and enchanting charge). Defaults as above.
 - **FR-29** The skill menu shows the real skill level, not s_eff.
 - **FR-30** Enchanting charge cost per use: above 100, the skill factor follows form B with limit **half its value at skill 100** (vanilla ≈ 0.146). Vanilla's formula reaches zero cost at 200 and is undefined above; form B replaces it entirely for s > 100. The limit is configurable in the INI as a fraction of the value at 100 (default 0.5). Enchanting magnitude keeps form A.
 
