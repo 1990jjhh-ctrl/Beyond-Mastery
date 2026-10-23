@@ -37,6 +37,8 @@ The version lives in one place: `VERSION` in `CMakeLists.txt`'s `project()` call
    - `BeyondMastery-<version>.zip`, rooted at `Data/`, for Nexus and mod managers;
    - `BeyondMastery-<version>-SKSE-Plugins.zip`, rooted at `Data/SKSE/Plugins/`.
 
+Both archives carry the DLL plus `BeyondMastery/LICENSE`, `README.md` and `THIRD-PARTY-NOTICES.txt`. The notices are generated from the build: the license of every vcpkg port it installed (`vcpkg_installed/<triplet>/share/<port>/copyright`) plus CommonLibSSE-NG's MIT and hde64 notices, because the MIT and BSD libraries linked into the DLL require them with every binary copy. A new dependency is covered automatically.
+
 `python3 scripts/package.py` builds the same archives locally from `build/release/BeyondMastery.dll`, into `dist/`.
 
 ## Build
