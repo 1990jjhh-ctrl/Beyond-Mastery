@@ -25,7 +25,7 @@ Every change goes through a branch and a pull request; nothing is committed to `
 | Native tests | `scripts/test.sh` with `BM_REQUIRE_STUB_TESTS=1`, so the stub tests cannot be skipped | xbyak v7.28 (vcpkg's version) |
 | Formatting | `scripts/format.sh --check` | clang-format 23.1.0 (llvm-mingw's version) |
 
-A second workflow, `.github/workflows/build.yml`, builds the DLL on pull requests that touch build inputs (`src/`, CMake, vcpkg, `lib/`, `scripts/`). It runs `scripts/setup.sh` and `scripts/build.sh` exactly as a developer does, then `scripts/package.py`, and uploads the release archives as a downloadable artifact of the run. CI cannot run the game, so the in-game check stays part of every change that touches the plugin.
+A second workflow, `.github/workflows/build.yml`, builds the DLL on pull requests and pushes to `master` that touch build inputs (`src/`, CMake, vcpkg, `lib/`, `scripts/`). The `master` builds fill the caches (sysroot, llvm-mingw, vcpkg packages) that pull requests read: GitHub shares caches with PRs only from the default branch. It runs `scripts/setup.sh` and `scripts/build.sh` exactly as a developer does, then `scripts/package.py`, and uploads the release archives as a downloadable artifact of the run. CI cannot run the game, so the in-game check stays part of every change that touches the plugin.
 
 ## Releasing
 
@@ -33,7 +33,7 @@ The version lives in one place: `VERSION` in `CMakeLists.txt`'s `project()` call
 
 1. Bump `VERSION` in a pull request and merge it.
 2. Tag the merge commit and push the tag: `git tag v1.2.3 && git push origin v1.2.3`.
-3. The build workflow refuses a tag that is not `v` + the version, builds, and publishes a GitHub Release with both archives:
+3. The build workflow refuses a tag that is not `v` + the version, then publishes a GitHub Release with both archives. It doesn't rebuild if a run in this repository already built the tag's exact tree: artifacts are named `BeyondMastery-tree-<tree hash>`, and a merged PR's own Build run usually matches, so the release ships the archives you could test from the PR. If `master` moved between that run and the merge, or the artifact expired (90 days), it builds instead. To get a reusable build after `master` moved, update the PR branch before merging. The archives:
    - `BeyondMastery-<version>.zip`, rooted at `Data/`, for Nexus and mod managers;
    - `BeyondMastery-<version>-SKSE-Plugins.zip`, rooted at `Data/SKSE/Plugins/`.
 
