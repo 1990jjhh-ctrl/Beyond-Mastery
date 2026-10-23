@@ -92,6 +92,7 @@ scope around the original, each checked to still target 52525.
 |---|---|---|
 | `ActorValueOwner::GetClampedActorValue` (NG `RELOCATION_ID(26616, 27284)`) | 27284 | H |
 | Spell cost skill factor | 26505 | H |
+| Its two calls (`call` at pattern +11 / +12) | 11017+0x38, 11494+0x4C | H |
 
 `27284` is **not** a spell-cost clamp: it is the engine's generic clamp of an
 actor value by its `ActorValueInfo::flags` — `kClampAsSkill` (1<<4) to [0, 100],
@@ -111,6 +112,17 @@ reaches it through the remap: `s_eff = (1/b) · (1 − m(s))^(1/e)` with the PC
 GMSTs read at runtime (Skyrim.esm: b = 0.0025, e = 0.65), so `s_eff → ≈ 257` as
 `s → ∞`. Perk, equipment and dual-cast multipliers apply afterwards, as FR-25
 requires.
+
+26505 takes `(ActorValueOwner* caster, float cost, int skill)`, and the skill is
+whatever skill the effect is tied to — any of the 18, so a modded effect tied to
+a form A skill would reach factor 0 at `s_eff` 400 (real ≈ 900). Both calls are
+wrapped to cap the skill at `SkillCeiling(fSpellCostLimit)` (256 with the esm
+values), the highest whole skill whose factor is still ≥ the limit. NPC skills
+arrive clamped to 100, below any ceiling, so they stay vanilla.
+
+The shared `GetActorValue` (38462) is byte-checked too: a mod that detoured it
+would stack its own remap under ours, so formula scaling refuses to install and
+the log names the conflict.
 
 ### 5.3 Enchanting charge cost (FR-30)
 
@@ -243,7 +255,7 @@ expected instructions in the real binary.
 
 **Exact run.** Against `SkyrimSE.exe 1.7.104.0` with its own
 `versionlib-1-7-104-0.bin` (Address Library All in One v13), **all 13 sites
-match at drift 0**:
+match at drift 0** (15 since the spell-cost calls):
 
 ```
 GetSkillCap                  0x78dd1f   ImprovePlayerSkillPoints     0x78dda1
@@ -252,7 +264,8 @@ UpdateSkillList              0x979790   SkillListCallA               0x9773a0
 SkillListCallB               0x97cf7c   SkillListCallC               0x9823a6
 GetClampedActorValue         0x447180   CalculateChargePointsPerUse  0x9275e4
 LegendaryBoxA                0x977033   LegendaryBoxB                0x9787dc
-BarterFinalClamp             0x900d8a
+BarterFinalClamp             0x900d8a   SpellCostCallA               0x148a98
+SpellCostCallB               0x15550c
 ```
 
 **Corroborating run.** The same check against the `versionlib-1-7-99-0.bin`

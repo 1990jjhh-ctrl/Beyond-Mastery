@@ -51,6 +51,8 @@ namespace BM::Hooks
 			&HookSites::kSkillListCallB,
 			&HookSites::kSkillListCallC,
 			&HookSites::kGetClampedActorValue,
+			&HookSites::kSpellCostCallA,
+			&HookSites::kSpellCostCallB,
 			&HookSites::kCalculateChargePointsPerUse,
 			&HookSites::kBarterFinalClamp,
 		};
@@ -388,6 +390,17 @@ namespace BM::Hooks
 				return false;
 			}
 
+			// The function itself must be untouched too: a mod that detoured it
+			// (another uncapper's remap) would stack with ours. Like a changed
+			// Legendary, that mod needs a compatibility patch.
+			if (CheckDetailed(HookSites::kPlayerAVOGetCurrent).status != SiteStatus::kReady) {
+				logger::error(
+					"GetActorValue has been patched by another mod, which needs a compatibility patch. "
+					"Not installing formula scaling.");
+				g_signatureMismatch = true;
+				return false;
+			}
+
 			const auto clamp = CheckDetailed(HookSites::kGetClampedActorValue);
 			const auto list = CheckDetailed(HookSites::kUpdateSkillList);
 			if (clamp.status != SiteStatus::kReady || list.status != SiteStatus::kReady) {
@@ -433,6 +446,30 @@ namespace BM::Hooks
 				return false;
 			}
 
+			// The two calls to the spell-cost skill factor (FR-25), still to 26505.
+			static REL::Relocation<std::uintptr_t>                                spellCost{ REL::ID(26505) };  // AE id; AE only
+			const std::array<std::pair<const HookSites::Site*, std::uint32_t>, 2> spellCostCalls{ {
+				{ &HookSites::kSpellCostCallA, HookSites::kSpellCostCallOffsetA },
+				{ &HookSites::kSpellCostCallB, HookSites::kSpellCostCallOffsetB },
+			} };
+			std::array<std::uintptr_t, 2>                                         costCalls{};
+			for (std::size_t i = 0; i < spellCostCalls.size(); ++i) {
+				const auto [site, offset] = spellCostCalls[i];
+				const auto checked = CheckDetailed(*site);
+				if (checked.status != SiteStatus::kReady) {
+					return false;
+				}
+				costCalls[i] = checked.address + offset;
+				if (CallTarget(costCalls[i]) != spellCost.address()) {
+					logger::error(
+						"{}: the call at {:#x} no longer goes to the spell-cost function -- another mod has "
+						"redirected it and needs a compatibility patch. Not installing formula scaling.",
+						site->name, costCalls[i]);
+					g_signatureMismatch = true;
+					return false;
+				}
+			}
+
 			// The barter menu's final price clamp (FR-26).
 			const auto barter = CheckDetailed(HookSites::kBarterFinalClamp);
 			if (barter.status != SiteStatus::kReady) {
@@ -452,6 +489,10 @@ namespace BM::Hooks
 			for (const auto call : calls) {
 				trampoline.write_call<5>(call, &Scaling::UpdateSkillList);
 			}
+			Scaling::SetOriginalSpellCost(spellCost.address());
+			for (const auto call : costCalls) {
+				trampoline.write_call<5>(call, &Scaling::SpellCostFactor);
+			}
 			Scaling::SetOriginalChargePerUse(chargePerUse.address());
 			trampoline.write_call<5>(chargeCall, &Scaling::ChargePerUse);
 			trampoline.write_branch<5>(clamp.address, &Scaling::GetClampedActorValue);
@@ -465,8 +506,10 @@ namespace BM::Hooks
 
 			logger::info(
 				"Formula scaling installed: GetActorValue slot at {:#x}, clamp at {:#x}, skills menu "
-				"calls at {:#x} {:#x} {:#x}",
-				vtable.address() + sizeof(void*), clamp.address, calls[0], calls[1], calls[2]);
+				"calls at {:#x} {:#x} {:#x}, spell-cost calls at {:#x} {:#x}, enchanting charge call at "
+				"{:#x}, barter clamp at {:#x}",
+				vtable.address() + sizeof(void*), clamp.address, calls[0], calls[1], calls[2], costCalls[0],
+				costCalls[1], chargeCall, barter.address);
 			Scaling::LogSelfCheck();
 			return true;
 		}
@@ -582,7 +625,11 @@ namespace BM::Hooks
 		// Fortify effect can lift a skill past 100 without any raised cap.
 		if (!Config::Get().enableFormulaScaling) {
 			logger::info("bEnableFormulaScaling is off, so formula scaling is not installed");
-		} else if (UseAE()) {
+		} else if (!UseAE()) {
+			logger::info(
+				"Formula scaling is AE/1.7.x only (SE 1.5.97 is out of scope, PRD §3), so it is not "
+				"installed");
+		} else {
 			Scaling::CacheSettings();
 			g_scalingInstalled = InstallScaling();
 			allReady = allReady && g_scalingInstalled;

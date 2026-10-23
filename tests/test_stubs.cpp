@@ -193,9 +193,9 @@ static void TestStubsFitTheTrampolineBudget()
 	const auto stubs = Emit<BM::Stubs::CapStub>().size() + Emit<BM::Stubs::XPGainStub>().size() +
 	                   Emit<BM::Stubs::BarterClampStub>().size() + Emit<BM::Stubs::CharXPClampStub>().size();
 	// Thunks: cap, XP gain, two Legendary boxes, three skills-menu calls,
-	// the GetClampedActorValue branch, the charge call, the barter clamp and
-	// the character-XP clamp.
-	CHECK(stubs + 11 * 14 < BM::Stubs::kTrampolineSize);
+	// the GetClampedActorValue branch, two spell-cost calls, the charge call,
+	// the barter clamp and the character-XP clamp.
+	CHECK(stubs + 13 * 14 < BM::Stubs::kTrampolineSize);
 }
 
 int main()

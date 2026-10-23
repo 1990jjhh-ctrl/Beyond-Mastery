@@ -419,6 +419,22 @@ static void TestClampTreatsNonFiniteLikeTheEngine()
 	CHECK(ClampActorValue(nan, kClampAsSpecialStat | kSpecialStatClampsAsNonZero, false) == 10.0);
 }
 
+static void TestSpellCostSkillCeilingHoldsTheLimit()
+{
+	// The engine's spell cost takes the skill as an int; capping it at the
+	// ceiling keeps the factor at or above the limit for any skill, including
+	// a modded effect tied to a form A skill.
+	const BM::Curves::SpellCostFormula f{ 0.0025, 0.65 };
+	CHECK(f.SkillCeiling(0.25) == 256);
+	CHECK(f.Vanilla(f.SkillCeiling(0.25)) >= 0.25);
+	CHECK(f.Vanilla(f.SkillCeiling(0.25) + 1) < 0.25);
+	CHECK(f.SkillCeiling(0.0) == 400);                         // factor 0 exactly at 400
+	CHECK(f.SkillCeiling(0.59) >= 100);                        // just under the value at 100
+	CHECK(f.SkillCeiling(0.6) == 100);                         // limit above the value at 100
+	const BM::Curves::SpellCostFormula modded{ 0.003, 0.65 };  // Vanilla(100) = 0.543
+	CHECK(modded.SkillCeiling(0.59) == 100);
+}
+
 int main()
 {
 	TestDragonSoulsPaid();
@@ -447,6 +463,7 @@ int main()
 	TestRemapsFiniteAtConfigExtremes();
 	TestRemapNeverBelow100WhenLimitIsNotBelowValueAt100();
 	TestClampTreatsNonFiniteLikeTheEngine();
+	TestSpellCostSkillCeilingHoldsTheLimit();
 	if (g_failures == 0) {
 		std::printf("All curve tests passed.\n");
 	}

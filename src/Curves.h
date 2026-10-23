@@ -321,6 +321,22 @@ namespace BM::Curves
 			return std::pow(x, 1.0 / exponent) / base;
 		}
 
+		// Highest whole skill at which the vanilla factor is still at or above
+		// a_limit -- never below 100. The engine takes the spell-cost skill as
+		// an int, so capping it here holds the limit for any skill, including
+		// a modded effect tied to a form A skill (FR-25).
+		[[nodiscard]] std::int32_t SkillCeiling(double a_limit) const noexcept
+		{
+			if (a_limit >= Vanilla(kVanillaCap)) {
+				return static_cast<std::int32_t>(kVanillaCap);
+			}
+			auto ceiling = static_cast<std::int32_t>(std::floor(InverseVanilla(a_limit)));
+			while (ceiling > kVanillaCap && Vanilla(ceiling) < a_limit) {
+				--ceiling;  // pow round-off at the boundary
+			}
+			return std::max(ceiling, static_cast<std::int32_t>(kVanillaCap));
+		}
+
 		// Effective skill to report to the engine so that it computes the
 		// asymptotic factor instead of the vanilla one. A limit at or above
 		// the value at 100 (config, or a mod changing the GMSTs) leaves no

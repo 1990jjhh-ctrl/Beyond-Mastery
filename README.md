@@ -25,10 +25,35 @@ Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
 - The first level past a raised limit or a paid gate costs its full XP (FR-8).
 
 Implemented, but not yet verified in-game:
+- Formula scaling above 100 (FR-24 … FR-30), described below.
+- The optional character-XP clamp, `bClampCharXPAbove100` (FR-11).
+- A one-time log warning if a skill's XP threshold ever passes float
+  precision, around level 3,500 (FR-10).
 - The conflict warning (FR-20).
 
-Not yet implemented: formula scaling above 100, FR-10's double XP accumulator
-and FR-11's character-XP clamp.
+Deferred: FR-10's double-precision XP accumulator, until a reachable level
+needs it.
+
+## Skills above 100
+
+Above 100, skills keep paying off, but less and less:
+
+- Most effects (weapon damage, armor, smithing, alchemy, enchanting
+  magnitude, block, lockpicking, pickpocket, sneak) grow with the square root
+  of the skill rather than linearly.
+- Spell cost keeps falling towards a floor: the skill's part of the cost never
+  drops below 25% (`fSpellCostLimit`).
+- Buying always costs at least 1.2× what the same item sells for
+  (`fBarterMinRatio`), after perks and Fortify Barter.
+- Enchanting charge per use falls towards half its value at 100
+  (`fEnchantChargeLimitFraction`), so enchanted weapons never become free.
+
+Only the player is affected; NPCs stay vanilla. Everything other mods or
+scripts read as the player's current skill above 100 is this *effective*
+value, not the level shown in the skills menu. A script that sets a skill
+from its own reading (`SetActorValue(x, GetActorValue(x) + 1)`) would
+therefore lower a skill above 100. `bEnableFormulaScaling=false` in
+`BeyondMastery.ini` turns all of this off.
 
 ## Install
 

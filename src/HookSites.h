@@ -180,6 +180,16 @@ namespace BM::HookSites
 		true
 	};
 
+	// The two calls to the spell-cost skill factor (26505), which takes
+	// (ActorValueOwner* caster, float cost, int skill) and reads the skill as
+	// an int. Wrapped so the skill is capped where the factor reaches
+	// fSpellCostLimit, for any skill (FR-25). AE/1.7.x only.
+	inline constexpr std::uint32_t kSpellCostCallOffsetA = 11;
+	inline constexpr std::uint32_t kSpellCostCallOffsetB = 12;
+
+	inline constexpr Site kSpellCostCallA{ "SpellCostCallA", { 0, 0 }, { 11017, 0x38 }, "", "F3 44 0F 2C C0 48 8B CB 0F 28 CE E8 ?? ?? ?? ??", true };
+	inline constexpr Site kSpellCostCallB{ "SpellCostCallB", { 0, 0 }, { 11494, 0x4C }, "", "48 8D 8B B8 00 00 00 F3 44 0F 2C C0 E8 ?? ?? ?? ??", true };
+
 	// --- Enchanting charge cost (hook-points.md §5.3, FR-30) -----------------
 
 	// Two bytes in the original pattern vary (B0 or B8); stored as "??".
@@ -263,6 +273,8 @@ namespace BM::HookSites
 		&kSkillListCallB,
 		&kSkillListCallC,
 		&kGetClampedActorValue,
+		&kSpellCostCallA,
+		&kSpellCostCallB,
 		&kCalculateChargePointsPerUse,
 		&kLegendaryBoxA,
 		&kLegendaryBoxB,

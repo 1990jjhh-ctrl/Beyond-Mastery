@@ -55,6 +55,10 @@ namespace BM::Scaling
 		using ChargePerUse_t = float (*)(float, float);
 		std::atomic<ChargePerUse_t> g_charge{ nullptr };
 
+		// The engine's spell-cost skill factor (26505): caster, cost, int skill.
+		using SpellCost_t = float (*)(RE::ActorValueOwner*, float, std::int32_t);
+		std::atomic<SpellCost_t> g_spellCost{ nullptr };
+
 		// Open skills-menu scopes on this thread. StatsMenu::UpdateSkillList
 		// runs synchronously on the UI thread and reads the skills itself, so
 		// the remap is off for exactly that thread and nowhere else (FR-29).
@@ -199,5 +203,20 @@ namespace BM::Scaling
 			Config::Get().barterMinRatio);
 		*a_buy = static_cast<float>(prices.buy);
 		*a_sell = static_cast<float>(prices.sell);
+	}
+
+	void SetOriginalSpellCost(std::uintptr_t a_original) noexcept
+	{
+		g_spellCost.store(reinterpret_cast<SpellCost_t>(a_original), std::memory_order_release);
+	}
+
+	float SpellCostFactor(RE::ActorValueOwner* a_caster, float a_cost, std::int32_t a_skill)
+	{
+		// The magic schools already stay below the ceiling through the remap;
+		// this holds the same limit for an effect tied to any other skill.
+		// NPC skills are clamped to 100, below any ceiling, so they are vanilla.
+		const auto ceiling = Curves::SpellCostFormula{ g_settings.spellCostBase.Get(), g_settings.spellCostScale.Get() }
+		                         .SkillCeiling(Config::Get().spellCostLimit);
+		return g_spellCost.load(std::memory_order_acquire)(a_caster, a_cost, std::min(a_skill, ceiling));
 	}
 }

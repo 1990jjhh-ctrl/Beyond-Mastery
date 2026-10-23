@@ -85,7 +85,7 @@ static void TestEverySiteVerified()
 static void TestLegendaryBoxSites()
 {
 	using namespace BM::HookSites;
-	CHECK(kAllSites.size() == 13);
+	CHECK(kAllSites.size() == 15);
 	CHECK(kLegendaryBoxA.ae.id == 52510 && kLegendaryBoxA.ae.offset == 0x5E3);
 	CHECK(kLegendaryBoxB.ae.id == 52520 && kLegendaryBoxB.ae.offset == 0x25C);
 	CHECK(kLegendaryCallOffset == 15);
@@ -119,7 +119,10 @@ static void TestScalingSites()
 	CHECK(kSkillListCallA.patternAE.substr(kSkillListCallOffsetA * 3, 2) == "E8");
 	CHECK(kSkillListCallB.patternAE.substr(kSkillListCallOffsetB * 3, 2) == "E8");
 	CHECK(kSkillListCallC.patternAE.substr(kSkillListCallOffsetC * 3, 2) == "E8");
-	for (const auto* s : { &kGetClampedActorValue, &kBarterFinalClamp, &kSkillListCallA, &kSkillListCallB, &kSkillListCallC })
+	CHECK(kSpellCostCallA.patternAE.substr(kSpellCostCallOffsetA * 3, 2) == "E8");
+	CHECK(kSpellCostCallB.patternAE.substr(kSpellCostCallOffsetB * 3, 2) == "E8");
+	for (const auto* s : { &kGetClampedActorValue, &kBarterFinalClamp, &kSkillListCallA, &kSkillListCallB, &kSkillListCallC,
+			 &kSpellCostCallA, &kSpellCostCallB })
 		CHECK(!ExistsOn(*s, false) && ExistsOn(*s, true));
 }
 

@@ -54,4 +54,12 @@ namespace BM::Scaling
 	// Callee of the barter final-clamp stub (FR-26): the engine's clamp of
 	// the buy and sell factors after perks, plus the buy/sell ratio floor.
 	void BarterClamp(float* a_buy, float* a_sell);
+
+	// The engine's spell-cost skill factor, taken from its call sites. Set
+	// before the calls are redirected.
+	void SetOriginalSpellCost(std::uintptr_t a_original) noexcept;
+
+	// Call-site thunk for the spell-cost skill factor (FR-25): the engine's
+	// own, with the skill capped where the factor reaches fSpellCostLimit.
+	float SpellCostFactor(RE::ActorValueOwner* a_caster, float a_cost, std::int32_t a_skill);
 }
