@@ -27,8 +27,22 @@ on:
       - "scripts/**"
       - "LICENSE"
       - ".github/workflows/build.yml"
+  # Pushes to master fill the caches every pull request can read: GitHub only
+  # shares caches with PRs from the default branch, never between PRs. The
+  # paths filter applies to master only; tag pushes are never path-filtered.
   push:
+    branches: [master]
     tags: ["v*"]
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "vcpkg*.json"
+      - "lib/**"
+      - "scripts/**"
+      - "LICENSE"
+      - ".github/workflows/build.yml"
   workflow_dispatch:
 
 permissions:
@@ -88,13 +102,18 @@ jobs:
         with:
           submodules: recursive
 
+      # Only what the build calls, without recommends: wine's recommends and the
+      # full LLVM suite from llvm.sh took 18 minutes. wine runs DirectXTK's
+      # shader compile (`wine cmd /c`), and only when vcpkg rebuilds DirectXTK.
       - name: System tools (clang ${{ env.LLVM_VERSION }}, lld, llvm, ninja, wine)
         run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-$LLVM_VERSION main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
-          sudo apt-get install -y ninja-build wine
-          wget -q https://apt.llvm.org/llvm.sh
-          sudo bash llvm.sh "$LLVM_VERSION"
-          sudo apt-get install -y "llvm-$LLVM_VERSION" "lld-$LLVM_VERSION"
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build wine wine64 \
+            "clang-$LLVM_VERSION" "lld-$LLVM_VERSION" "llvm-$LLVM_VERSION"
           mkdir -p "$HOME/toolbin"
           for t in clang-cl lld-link llvm-rc llvm-mt llvm-lib; do
             if [ -x "/usr/bin/$t-$LLVM_VERSION" ]; then ln -sf "/usr/bin/$t-$LLVM_VERSION" "$HOME/toolbin/$t"; fi

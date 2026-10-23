@@ -25,7 +25,7 @@ Every change goes through a branch and a pull request; nothing is committed to `
 | Native tests | `scripts/test.sh` with `BM_REQUIRE_STUB_TESTS=1`, so the stub tests cannot be skipped | xbyak v7.28 (vcpkg's version) |
 | Formatting | `scripts/format.sh --check` | clang-format 23.1.0 (llvm-mingw's version) |
 
-A second workflow, `.github/workflows/build.yml`, builds the DLL on pull requests that touch build inputs (`src/`, CMake, vcpkg, `lib/`, `scripts/`). It runs `scripts/setup.sh` and `scripts/build.sh` exactly as a developer does, then `scripts/package.py`, and uploads the release archives as a downloadable artifact of the run. CI cannot run the game, so the in-game check stays part of every change that touches the plugin.
+A second workflow, `.github/workflows/build.yml`, builds the DLL on pull requests and pushes to `master` that touch build inputs (`src/`, CMake, vcpkg, `lib/`, `scripts/`). The `master` builds fill the caches (sysroot, llvm-mingw, vcpkg packages) that pull requests read: GitHub shares caches with PRs only from the default branch. It runs `scripts/setup.sh` and `scripts/build.sh` exactly as a developer does, then `scripts/package.py`, and uploads the release archives as a downloadable artifact of the run. CI cannot run the game, so the in-game check stays part of every change that touches the plugin.
 
 ## Releasing
 
