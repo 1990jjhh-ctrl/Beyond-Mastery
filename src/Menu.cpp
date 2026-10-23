@@ -137,12 +137,14 @@ namespace BM::Menu
 		}
 
 		// FR-8: when a level-up reaches the limit, the engine sets that skill's
-		// levelThreshold to 0 and stops; at the limit it then adds no XP at all
-		// (SkyrimSE.exe 1.7.104, 0x14078df1f and 0x14078dd33). Left at 0, the
-		// first XP gain after an Upgrade satisfies xp >= 0 and the level is
-		// free. Upgrade restores the threshold the engine itself computes for
-		// the level -- improveMult x level^fSkillUseCurve + improveOffset, with
-		// the AVSK defaults 1 and 0 -- and starts that level from zero.
+		// levelThreshold to 0 and stops, and its XP routine adds nothing at the
+		// limit (SkyrimSE.exe 1.7.104, 0x14078df1f and 0x14078dd33). Left at 0,
+		// the first XP gain after an Upgrade satisfies xp >= 0 and the level is
+		// free. Other paths still add XP at the limit -- player.advskill left
+		// millions in the field -- which the restored threshold would turn into
+		// many free levels. So Upgrade restores the threshold the engine itself
+		// computes for the level -- improveMult x level^fSkillUseCurve +
+		// improveOffset, with the AVSK defaults 1 and 0 -- and zeroes the XP.
 		// PlayerSkills lists the skills in the same order as Skills.h.
 		using PlayerSkill = RE::PlayerCharacter::PlayerSkills::Data::Skill;
 		static_assert(PlayerSkill::kTotal == Skills::kCount);

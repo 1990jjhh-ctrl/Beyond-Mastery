@@ -20,10 +20,11 @@ Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
   can't afford it, and names the level still to reach below the limit.
 - Reset Skill, re-training, and dragon-soul gates paid again on each climb.
 - Caps and gates survive save and reload.
+- The Reset Skill confirmation names the reset, the returned perks, the kept
+  cap and any dragon souls lost (FR-31).
+- The first level past a raised limit or a paid gate costs its full XP (FR-8).
 
 Implemented, but not yet verified in-game:
-- The reworded Reset Skill confirmation (FR-31).
-- The first level past a raised limit costs XP (FR-8).
 - The conflict warning (FR-20).
 
 Not yet implemented: formula scaling above 100, FR-10's double XP accumulator
