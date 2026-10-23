@@ -25,7 +25,19 @@ Every change goes through a branch and a pull request; nothing is committed to `
 | Native tests | `scripts/test.sh` with `BM_REQUIRE_STUB_TESTS=1`, so the stub tests cannot be skipped | xbyak v7.28 (vcpkg's version) |
 | Formatting | `scripts/format.sh --check` | clang-format 23.1.0 (llvm-mingw's version) |
 
-CI does not build the DLL and cannot run the game, so `scripts/build.sh` and the in-game check stay part of every change that touches the plugin.
+A second workflow, `.github/workflows/build.yml`, builds the DLL on pull requests that touch build inputs (`src/`, CMake, vcpkg, `lib/`, `scripts/`). It runs `scripts/setup.sh` and `scripts/build.sh` exactly as a developer does, then `scripts/package.py`, and uploads the release archives as a downloadable artifact of the run. CI cannot run the game, so the in-game check stays part of every change that touches the plugin.
+
+## Releasing
+
+The version lives in one place: `VERSION` in `CMakeLists.txt`'s `project()` call. It ends up in the DLL and in the archive names.
+
+1. Bump `VERSION` in a pull request and merge it.
+2. Tag the merge commit and push the tag: `git tag v1.2.3 && git push origin v1.2.3`.
+3. The build workflow refuses a tag that is not `v` + the version, builds, and publishes a GitHub Release with both archives:
+   - `BeyondMastery-<version>.zip`, rooted at `Data/`, for Nexus and mod managers;
+   - `BeyondMastery-<version>-SKSE-Plugins.zip`, rooted at `Data/SKSE/Plugins/`.
+
+`python3 scripts/package.py` builds the same archives locally from `build/release/BeyondMastery.dll`, into `dist/`.
 
 ## Build
 

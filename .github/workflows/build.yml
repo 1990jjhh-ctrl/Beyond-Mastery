@@ -1,0 +1,128 @@
+# Builds BeyondMastery.dll exactly as a developer does -- scripts/setup.sh, then
+# scripts/build.sh (tests and runtime-import gate included) -- and packages it
+# with scripts/package.py. Every run uploads the archives as a downloadable
+# artifact; a v* tag also publishes them as a GitHub Release.
+#
+# setup.sh downloads the MSVC CRT and Windows SDK with xwin, which accepts
+# Microsoft's license on the repository owner's behalf, as it does locally.
+name: Build
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "vcpkg*.json"
+      - "lib/**"
+      - "scripts/**"
+      - "LICENSE"
+      - ".github/workflows/build.yml"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # clang 21 is what the project is developed with; CommonLibSSE-NG's toolchain
+  # file looks for plain clang-cl/lld-link/llvm-rc, so they are symlinked.
+  LLVM_VERSION: "21"
+  XWIN_VERSION: "0.10.0"  # as pinned in scripts/setup.sh
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Refuse a tag that does not match the project version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python3 scripts/package.py --tag "${{ github.ref_name }}" --check-only
+
+      - name: System tools (clang ${{ env.LLVM_VERSION }}, lld, llvm, ninja, wine)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build wine
+          wget -q https://apt.llvm.org/llvm.sh
+          sudo bash llvm.sh "$LLVM_VERSION"
+          sudo apt-get install -y "llvm-$LLVM_VERSION" "lld-$LLVM_VERSION"
+          mkdir -p "$HOME/toolbin"
+          for t in clang-cl lld-link llvm-rc llvm-mt llvm-lib; do
+            if [ -x "/usr/bin/$t-$LLVM_VERSION" ]; then ln -sf "/usr/bin/$t-$LLVM_VERSION" "$HOME/toolbin/$t"; fi
+          done
+          echo "$HOME/toolbin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: xwin ${{ env.XWIN_VERSION }} (prebuilt, instead of cargo install)
+        run: |
+          mkdir -p "$HOME/.cargo/bin"
+          curl -fsSL "https://github.com/Jake-Shadle/xwin/releases/download/$XWIN_VERSION/xwin-$XWIN_VERSION-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz --strip-components=1 -C "$HOME/.cargo/bin" "xwin-$XWIN_VERSION-x86_64-unknown-linux-musl/xwin"
+          xwin --version
+
+      - name: Cache the MSVC sysroot
+        uses: actions/cache@v4
+        with:
+          path: ~/xwin-out
+          key: xwin-${{ env.XWIN_VERSION }}-${{ hashFiles('scripts/setup.sh') }}
+
+      - name: Cache llvm-mingw
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/opt/llvm-mingw
+          key: llvm-mingw-${{ hashFiles('scripts/setup.sh') }}
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-clang${{ env.LLVM_VERSION }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**', 'lib/commonlibsse-ng/examples/linux-cross-compile/custom-ports/**') }}
+          restore-keys: vcpkg-clang${{ env.LLVM_VERSION }}-
+
+      - name: scripts/setup.sh
+        run: scripts/setup.sh
+
+      - name: scripts/build.sh
+        run: |
+          export VCPKG_ROOT="$HOME/.local/share/vcpkg"
+          export XWIN_SYSROOT="$HOME/xwin-out"
+          export LLVM_MINGW_BIN="$HOME/.local/opt/llvm-mingw/bin"
+          export BM_REQUIRE_STUB_TESTS=1
+          scripts/build.sh
+
+      - name: scripts/package.py
+        run: python3 scripts/package.py --out dist ${{ github.ref_type == 'tag' && format('--tag {0}', github.ref_name) || '' }}
+
+      - name: Upload the archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeyondMastery-${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish the GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: BeyondMastery-${{ github.ref_name }}
+          path: dist
+      - name: gh release create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/*.zip \
+            --repo "${{ github.repository }}" \
+            --title "Beyond Mastery ${{ github.ref_name }}" \
+            --generate-notes --verify-tag
