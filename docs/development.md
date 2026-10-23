@@ -66,6 +66,7 @@ These tests are the only automated layer, and they can only cover the game-free 
 | `src/Texts.h` | Player-facing text that depends on state |
 | `src/Hooks.*` | Resolves and checks every site, installs the hooks, and holds the cap and XP-gain callees |
 | `src/Menu.*` | The Legendary menu: Reset Skill, Upgrade, Cancel |
+| `src/Scaling.*` | Formula scaling above 100: the remap, the clamp, the skills-menu bypass, enchanting charge, barter |
 | `src/Resources.*` | Reads and spends perks, dragon souls and filled black soul gems |
 | `src/State.*` | Per-skill caps and paid gates, with co-save serialization |
 | `src/Skills.h` | Skill ↔ actor value mapping, and the scaling form per skill |
@@ -83,17 +84,18 @@ These tests are the only automated layer, and they can only cover the game-free 
 
 `PowerDecayFormula` deliberately offers both `Factor()`, for computing the value ourselves, and `EffectiveSkill()`, which inverts the vanilla formula so the engine computes the right value from a faked skill. Which one a hook uses depends on whether it replaces the engine's calculation or feeds it a remapped skill.
 
-### Two scaling mechanisms (PRD §6.9, hook-points.md §5)
+### Formula scaling (PRD §6.9, hook-points.md §5, §6)
 
-Instead of one hook per skill-dependent formula, **one hook on the player's `GetActorValue`** returns a remapped effective skill `s_eff` for skills above 100. `src/Skills.h` maps each of the 18 skills to its `Scaling` form (`kSqrt`, `kSpellCost` or `kBarter`), and `ScalingOf()` is the single place that decides.
+Instead of one hook per skill-dependent formula, **slot 1 of the player's ActorValueOwner vtable** (`GetActorValue`) returns a remapped effective skill `s_eff` for skills above 100. `src/Skills.h` maps each of the 18 skills to its `Scaling` form (`kSqrt`, `kSpellCost` or `kBarter`), and `ScalingOf()` is the single place that decides. The callees live in `src/Scaling.*`; `Hooks.cpp` installs them, all or nothing. NPCs stay vanilla: the remap is in the player's own vtable.
 
 Consequences:
 
-- Every other reader of the player's skill also sees `s_eff`: Papyrus, perk conditions and other mods. The values stay ≥ 100, so vanilla perk requirements still pass.
-- The skills menu must have the remap switched off while it builds its list (FR-29). That is why the menu's update function gets a second hook.
-- Magic skills and Enchanting charge cost are clamped at 100 inside the engine's own formulas. Those clamps must be patched out, or form B has no effect.
-- Enchanting is the exception to the one-hook rule. Its charge-per-use call is replaced and computed from the **real** skill (FR-30), while its magnitude goes through the normal `s_eff` path.
-- Barter (FR-26, hook-points.md §6) is unresolved: confidence L, and no reference implementation. It needs reverse engineering before it can be built.
+- Every other reader of the player's current skill also sees `s_eff`: Papyrus, perk conditions and other mods. The values stay ≥ 100, so vanilla perk requirements still pass. The XP routine reads the *base* value (slot 3), so leveling is unaffected.
+- The engine's generic `GetClampedActorValue` clamps every skill to 100. Spell cost, barter Speech, Lockpicking, Pickpocket and Sneak read through it, so it is replaced: vanilla for everyone, but the player's skills are only kept ≥ 0.
+- Spell cost and barter get form B through `s_eff` itself: the remap inverts the vanilla formula, so the engine computes the asymptotic value.
+- The skills menu must show the real level (FR-29): its three calls to `UpdateSkillList` are wrapped so the remap is off while it runs.
+- Enchanting charge per use is the exception: its only call is replaced and computed from the **real** skill (FR-30), while its magnitude goes through `s_eff`.
+- Barter's final clamp after perks is replaced by a stub that adds the 1.2 buy/sell floor (FR-26).
 
 ### Plugin units
 

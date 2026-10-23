@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "Curves.h"
 #include "Menu.h"
+#include "Scaling.h"
 #include "Skills.h"
 #include "State.h"
 #include "Stubs.h"
@@ -19,6 +20,7 @@ namespace BM::Hooks
 		bool g_capHookInstalled = false;
 		bool g_xpGainHookInstalled = false;
 		bool g_legendaryMenuInstalled = false;
+		bool g_scalingInstalled = false;
 
 		// REL::Module classifies a runtime by minor version: 4 = VR, 5 = SE,
 		// 6 and above = AE. So 1.7.x takes the AE path throughout -- the AE
@@ -38,6 +40,19 @@ namespace BM::Hooks
 		// is not this build's problem: warning the player about a function we
 		// never touch is a false positive, and the later plans will claim them.
 		[[nodiscard]] bool SiteIsNeeded(const HookSites::Site& a_site) noexcept;
+
+		// Every site formula scaling patches or checks a call against
+		// (hook-points.md §5, §6). AE/1.7.x only.
+		constexpr std::array kScalingSites{
+			&HookSites::kPlayerAVOGetCurrent,
+			&HookSites::kUpdateSkillList,
+			&HookSites::kSkillListCallA,
+			&HookSites::kSkillListCallB,
+			&HookSites::kSkillListCallC,
+			&HookSites::kGetClampedActorValue,
+			&HookSites::kCalculateChargePointsPerUse,
+			&HookSites::kBarterFinalClamp,
+		};
 
 		struct Checked
 		{
@@ -164,6 +179,11 @@ namespace BM::Hooks
 		return g_legendaryMenuInstalled;
 	}
 
+	bool ScalingInstalled() noexcept
+	{
+		return g_scalingInstalled;
+	}
+
 	float ImprovePlayerSkillPoints(RE::ActorValue a_av, float a_improveMult, float a_points,
 		float a_improveOffset) noexcept
 	{
@@ -237,6 +257,11 @@ namespace BM::Hooks
 			if (&a_site == &HookSites::kLegendaryBoxA || &a_site == &HookSites::kLegendaryBoxB) {
 				return UseAE();  // AE/1.7.x only, like the cap hook it depends on
 			}
+			for (const auto* scaling : kScalingSites) {
+				if (&a_site == scaling) {
+					return UseAE() && Config::Get().enableFormulaScaling;
+				}
+			}
 			return false;
 		}
 
@@ -286,6 +311,72 @@ namespace BM::Hooks
 				SKSE::GetTrampoline().write_call<5>(call, &Menu::OpenLegendary);
 				logger::info("{} hooked at {:#x}", site->name, call);
 			}
+			return true;
+		}
+
+		// Formula scaling (FR-24 ... FR-29): every site is checked before any
+		// is written, so scaling is either fully in or fully out. Player only:
+		// the remap sits in the player's own vtable, and the clamp lifts the
+		// ceiling for the player's skills alone.
+		[[nodiscard]] bool InstallScaling()
+		{
+			// The player's ActorValueOwner vtable, slot 1 (GetActorValue), must
+			// still hold the engine's shared function; anything else means
+			// another mod got there first.
+			REL::Relocation<std::uintptr_t>        vtable{ RE::VTABLE_PlayerCharacter[5] };
+			static REL::Relocation<std::uintptr_t> getActorValue{ RELOCATION_ID(37517, 38462) };
+			const auto                             slot = *reinterpret_cast<const std::uintptr_t*>(vtable.address() + sizeof(void*));
+			if (slot != getActorValue.address()) {
+				logger::error(
+					"The player's GetActorValue slot no longer holds the engine's function -- another mod "
+					"replaced it and needs a compatibility patch. Not installing formula scaling.");
+				g_signatureMismatch = true;
+				return false;
+			}
+
+			const auto clamp = CheckDetailed(HookSites::kGetClampedActorValue);
+			const auto list = CheckDetailed(HookSites::kUpdateSkillList);
+			if (clamp.status != SiteStatus::kReady || list.status != SiteStatus::kReady) {
+				return false;  // the site loop above already logged why
+			}
+
+			const std::array<std::pair<const HookSites::Site*, std::uint32_t>, 3> listCalls{ {
+				{ &HookSites::kSkillListCallA, HookSites::kSkillListCallOffsetA },
+				{ &HookSites::kSkillListCallB, HookSites::kSkillListCallOffsetB },
+				{ &HookSites::kSkillListCallC, HookSites::kSkillListCallOffsetC },
+			} };
+			std::array<std::uintptr_t, 3>                                         calls{};
+			for (std::size_t i = 0; i < listCalls.size(); ++i) {
+				const auto [site, offset] = listCalls[i];
+				const auto checked = CheckDetailed(*site);
+				if (checked.status != SiteStatus::kReady) {
+					return false;
+				}
+				calls[i] = checked.address + offset;
+				if (CallTarget(calls[i]) != list.address) {
+					logger::error(
+						"{}: the call at {:#x} no longer goes to UpdateSkillList -- another mod has "
+						"redirected it and needs a compatibility patch. Not installing formula scaling.",
+						site->name, calls[i]);
+					g_signatureMismatch = true;
+					return false;
+				}
+			}
+
+			auto& trampoline = SKSE::GetTrampoline();
+			for (const auto call : calls) {
+				trampoline.write_call<5>(call, &Scaling::UpdateSkillList);
+			}
+			trampoline.write_branch<5>(clamp.address, &Scaling::GetClampedActorValue);
+			// The original first: the slot is live the moment it is written.
+			Scaling::SetOriginalGetActorValue(slot);
+			vtable.write_vfunc(1, &Scaling::GetActorValue);
+
+			logger::info(
+				"Formula scaling installed: GetActorValue slot at {:#x}, clamp at {:#x}, skills menu "
+				"calls at {:#x} {:#x} {:#x}",
+				vtable.address() + sizeof(void*), clamp.address, calls[0], calls[1], calls[2]);
+			Scaling::LogSelfCheck();
 			return true;
 		}
 	}
@@ -391,11 +482,22 @@ namespace BM::Hooks
 			logger::info("Cap hook not installed, so the Legendary menu is not either; Legendary stays vanilla");
 		}
 
-		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}; Legendary menu {}",
+		// Formula scaling (FR-24 ... FR-29). Independent of the cap hook: a
+		// Fortify effect can lift a skill past 100 without any raised cap.
+		if (!Config::Get().enableFormulaScaling) {
+			logger::info("bEnableFormulaScaling is off, so formula scaling is not installed");
+		} else if (UseAE()) {
+			Scaling::CacheSettings();
+			g_scalingInstalled = InstallScaling();
+			allReady = allReady && g_scalingInstalled;
+		}
+
+		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}; Legendary menu {}; formula scaling {}",
 			allReady ? "all ready" : "some unavailable",
 			g_capHookInstalled ? "installed" : "not installed",
 			g_xpGainHookInstalled ? "installed" : "not installed",
-			g_legendaryMenuInstalled ? "installed" : "not installed");
+			g_legendaryMenuInstalled ? "installed" : "not installed",
+			g_scalingInstalled ? "installed" : "not installed");
 		return allReady;
 	}
 }
