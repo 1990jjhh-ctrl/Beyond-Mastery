@@ -164,6 +164,16 @@ namespace BM::HookSites
 	inline constexpr Site kSkillListCallB{ "SkillListCallB", { 0, 0 }, { 52532, 0x5AC }, "", "48 8B CF E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ??", true };
 	inline constexpr Site kSkillListCallC{ "SkillListCallC", { 0, 0 }, { 52591, 0x246 }, "", "48 8B 4E 10 E8 ?? ?? ?? ?? 48 8B 5E 10", true };
 
+	// The crafting menus' bottom bar (UpdateCraftingInfo, shared by smithing,
+	// alchemy and enchanting) reads the level it shows through the player's
+	// GetActorValue, i.e. s_eff. The whole read -- mov rcx, [player];
+	// add rcx, 0xB8; mov rax, [rcx]; mov edx, edi; call [rax+8] -- is
+	// replaced by mov ecx, edi; call <real value>, so the bar shows the real
+	// current level (FR-29). AE/1.7.x only.
+	inline constexpr std::size_t kCraftingInfoSkillReadLength = 22;
+
+	inline constexpr Site kCraftingInfoSkillRead{ "CraftingInfoSkillRead", { 0, 0 }, { 51364, 0x8D }, "", "48 8B 0D ?? ?? ?? ?? 48 81 C1 B8 00 00 00 48 8B 01 8B D7 FF 50 08", true };
+
 	// ActorValueOwner::GetClampedActorValue: the engine's generic clamp of an
 	// actor value by its ActorValueInfo flags -- skills to [0, 100]. Spell
 	// cost, barter Speech, Lockpicking, Pickpocket and Sneak read the skill
@@ -272,6 +282,7 @@ namespace BM::HookSites
 		&kSkillListCallA,
 		&kSkillListCallB,
 		&kSkillListCallC,
+		&kCraftingInfoSkillRead,
 		&kGetClampedActorValue,
 		&kSpellCostCallA,
 		&kSpellCostCallB,

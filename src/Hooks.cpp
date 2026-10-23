@@ -50,6 +50,7 @@ namespace BM::Hooks
 			&HookSites::kSkillListCallA,
 			&HookSites::kSkillListCallB,
 			&HookSites::kSkillListCallC,
+			&HookSites::kCraftingInfoSkillRead,
 			&HookSites::kGetClampedActorValue,
 			&HookSites::kSpellCostCallA,
 			&HookSites::kSpellCostCallB,
@@ -446,6 +447,12 @@ namespace BM::Hooks
 				return false;
 			}
 
+			// The crafting menus' bottom-bar skill read (FR-29).
+			const auto craftingRead = CheckDetailed(HookSites::kCraftingInfoSkillRead);
+			if (craftingRead.status != SiteStatus::kReady) {
+				return false;
+			}
+
 			// The two calls to the spell-cost skill factor (FR-25), still to 26505.
 			static REL::Relocation<std::uintptr_t>                                spellCost{ REL::ID(26505) };  // AE id; AE only
 			const std::array<std::pair<const HookSites::Site*, std::uint32_t>, 2> spellCostCalls{ {
@@ -489,6 +496,15 @@ namespace BM::Hooks
 			for (const auto call : calls) {
 				trampoline.write_call<5>(call, &Scaling::UpdateSkillList);
 			}
+			// mov ecx, edi (the skill) then call the real value, which returns
+			// it in xmm0 exactly as the replaced call [rax+8] did.
+			constexpr std::array<std::uint8_t, 2> movEcxEdi{ 0x89, 0xF9 };
+			REL::safe_write(craftingRead.address, movEcxEdi.data(), movEcxEdi.size());
+			trampoline.write_call<5>(craftingRead.address + movEcxEdi.size(), &Scaling::RealActorValue);
+			std::array<std::uint8_t, HookSites::kCraftingInfoSkillReadLength - 7> craftingNops{};
+			craftingNops.fill(REL::NOP);
+			REL::safe_write(craftingRead.address + 7, craftingNops.data(), craftingNops.size());
+
 			Scaling::SetOriginalSpellCost(spellCost.address());
 			for (const auto call : costCalls) {
 				trampoline.write_call<5>(call, &Scaling::SpellCostFactor);
@@ -507,9 +523,9 @@ namespace BM::Hooks
 			logger::info(
 				"Formula scaling installed: GetActorValue slot at {:#x}, clamp at {:#x}, skills menu "
 				"calls at {:#x} {:#x} {:#x}, spell-cost calls at {:#x} {:#x}, enchanting charge call at "
-				"{:#x}, barter clamp at {:#x}",
+				"{:#x}, barter clamp at {:#x}, crafting bar at {:#x}",
 				vtable.address() + sizeof(void*), clamp.address, calls[0], calls[1], calls[2], costCalls[0],
-				costCalls[1], chargeCall, barter.address);
+				costCalls[1], chargeCall, barter.address, craftingRead.address);
 			Scaling::LogSelfCheck();
 			return true;
 		}

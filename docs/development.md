@@ -94,7 +94,7 @@ Consequences:
 - The engine's generic `GetClampedActorValue` clamps every skill to 100. Spell cost, barter Speech, Lockpicking, Pickpocket and Sneak read through it, so it is replaced: vanilla for everyone, but the player's skills are only kept ≥ 0.
 - Barter gets form B through `s_eff` itself: Speech's remap inverts the vanilla formula, so the engine computes the asymptotic value.
 - Spell cost gets form B in its own two calls. The remap is form A for every other skill, and a modded effect can tie spell cost to any of them, so the wrapper recovers the real skill from form A, applies form B, and hands the engine the skill that produces that factor.
-- The skills menu must show the real level (FR-29): its three calls to `UpdateSkillList` are wrapped so the remap is off while it runs.
+- The skills menu must show the real level (FR-29): its three calls to `UpdateSkillList` are wrapped so the remap is off while it runs, and the crafting menus' bottom-bar read calls the real value directly.
 - Enchanting charge per use is the exception: its only call is replaced and computed from the **real** skill (FR-30), while its magnitude goes through `s_eff`.
 - Barter's final clamp after perks is replaced by a stub that adds the 1.2 buy/sell floor (FR-26).
 

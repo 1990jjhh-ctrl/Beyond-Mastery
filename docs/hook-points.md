@@ -71,6 +71,7 @@ AE/1.7.x; SE 1.5.97 is out of scope (PRD §3). Player only — NPCs stay vanilla
 | PlayerCharacter's ActorValueOwner vtable, slot 1 (= NG `RE::VTABLE_PlayerCharacter[5]`) | 208050 | H |
 | Skills menu list, `StatsMenu::UpdateSkillList(StatsMenu*)` | 52525 | H |
 | Its three direct calls | 52510+0x950, 52532+0x5AC, 52591+0x246 | H |
+| Crafting bottom bar `UpdateCraftingInfo`: its slot-1 skill read (22 bytes) | 51364+0x8D | H |
 
 `38462` is shared by Actor, Character and PlayerCharacter — it is slot 1 of the
 ActorValueOwner vtables 207521, 207896 and 208050. Nothing in the exe calls it
@@ -85,6 +86,15 @@ The engine's XP routine reads the skill through slot **3** (`call [rax+0x18]`,
 While the skills menu builds its list the remap is off (FR-29). The function is
 not patched itself: its three calls are redirected to a wrapper that opens a
 scope around the original, each checked to still target 52525.
+
+The crafting menus (smithing, alchemy, enchanting) share one bottom-bar
+function, 51364, with eight callers. It sends Flash `UpdateCraftingInfo` the
+skill's name, its XP progress and its level, read through slot 1 — so it showed
+`s_eff` (e.g. 532.46 at Enchanting 1000). Its one read
+(`mov rcx,[player]; add rcx,0xB8; mov rax,[rcx]; mov edx,edi; call [rax+8]`) is
+rewritten in place as `mov ecx, edi; call RealActorValue` plus NOPs: the real
+current value, Fortify effects included, returned in `xmm0` as before. The
+trainer menu reads slots 3 and 2 (base and permanent) and needs nothing.
 
 ### 5.2 The engine's skill clamp and spell cost (FR-25)
 

@@ -83,7 +83,7 @@ class TestSiteTableParsing(unittest.TestCase):
         self.sites = vs.parse_sites(ROOT / "src" / "HookSites.h")
 
     def test_parses_every_site_from_the_header(self):
-        self.assertEqual(len(self.sites), 15)
+        self.assertEqual(len(self.sites), 16)
         self.assertEqual(
             [s.name for s in self.sites][:2],
             ["GetSkillCap", "ImprovePlayerSkillPoints"],
