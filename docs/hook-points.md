@@ -167,7 +167,7 @@ box's Yes runs `Run` again with `unk18 == 0` and resets the skill.
 So Reset Skill delegates with `Run(1)` and keeps vanilla's second box (FR-31).
 Because the reset happens inside that later box, gates are cleared by the cap
 hook once the skill is seen below 100, not by a level check around `Run`. The
-cap notice is set on `sLegendaryResetSecondConfirm` only while `Run` builds the
+confirmation text (FR-31) is set on `sLegendaryResetSecondConfirm` only while `Run` builds the
 box — `Run` copies the text — and restored straight after. Never use
 `Setting::SetString` for it: it `free()`s the old string, which is exe- or
 engine-owned memory, and with a static CRT that is our heap freeing theirs.

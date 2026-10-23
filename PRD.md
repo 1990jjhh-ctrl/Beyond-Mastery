@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.6 — Approved** (2026-10-23; v1.6 moves SE 1.5.97 out of scope — §3)
+Status: **v1.7 — Approved** (2026-10-23; v1.7 rewords the Reset Skill confirmation — FR-31)
 Date: 2026-10-23
 Owner: Joel Hirsbrunner
 
@@ -117,7 +117,7 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 - **FR-15** The menu offers **Reset Skill**, **Upgrade** and **Cancel** for the selected skill. Upgrade is listed only when the skill's base level equals its limit (FR-2); below the limit the menu names the level still to reach and offers Reset Skill and Cancel.
 - **FR-16** Selecting Upgrade shows the cost of that upgrade and the player's current resources (including the gem choice per FR-7), with **Confirm** and **Back**; confirming applies it. Costs are not shown before Upgrade is selected.
 - **FR-17** Works without SkyUI/MCM. Menus use vanilla message boxes; the skill tree's own UI is not modified.
-- **FR-31** Reset Skill is vanilla Legendary. Vanilla confirms twice; choosing Reset Skill stands in for the first box, and vanilla's own second box follows (*"Making a skill Legendary will set it to 15 and return its perks. Are you sure?"*), so the flow keeps vanilla's two steps. The effect is vanilla's: level reset to 15, perk points returned. When the skill's cap is above 100, the second box opens with one sentence before vanilla's own text: *"<Skill> keeps its cap of N, but the M dragon souls spent on it are lost."* M is what the current climb's gates cost; the clause is left out when no gate was paid.
+- **FR-31** Reset Skill is vanilla Legendary. Vanilla confirms twice; choosing Reset Skill stands in for the first box, and vanilla's own second box follows, so the flow keeps vanilla's two steps. The effect is vanilla's: level reset to `fLegendarySkillResetValue` (15), perk points returned. The second box's text is always replaced: *"<Skill> goes back to 15 and its perk points are returned. Its cap stays at N, but the M dragon souls spent on it are lost. Are you sure you want to reset this skill?"* M is what the current climb's gates cost; the clause is left out when no gate was paid, which is always the case at cap 100.
 
 ### 6.6 Configuration (INI)
 
@@ -205,7 +205,7 @@ Spell cost skill factor, for comparison:
 8. At Destruction 400, the spell cost skill factor is 0.29 ± 0.01, never below 0.25 at any skill.
 9. At Speech 1000 with all barter perks and Fortify Barter, buy price ≥ 1.2 × sell price for any item.
 10. At Enchanting 1000, a weapon enchantment still costs charge per hit (skill factor ≥ 0.146), and the item's number of uses is finite.
-11. Reset Skill behaves as vanilla Legendary: level 15, perks returned, vanilla's second confirmation box shown; with a raised cap that box also names the kept cap and the dragon souls lost.
+11. Reset Skill behaves as vanilla Legendary: level 15, perks returned, a second confirmation box shown. That box names the reset level, the returned perks and the kept cap, plus the dragon souls lost when any gate was paid.
 
 ## 9. Risks
 

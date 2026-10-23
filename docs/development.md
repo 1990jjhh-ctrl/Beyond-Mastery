@@ -42,6 +42,7 @@ The C++ tests in `tests/` are self-contained binaries with `CHECK`/`CHECK_EQ`/`C
 | `test_curves` | the math in `src/Curves.h` |
 | `test_hooksites` | the site table and the runtime gate in `src/HookSites.h` |
 | `test_patterns` | byte-signature matching in `src/Patterns.h` |
+| `test_texts` | the state-dependent player text in `src/Texts.h` |
 | `test_stubs` | the hand-written trampolines in `src/Stubs.h`, **emitted with xbyak and inspected**: frame arithmetic, registers, budget. It needs the xbyak headers from the vcpkg install, which is why `build.sh` configures before it tests. |
 | `test_verify_sites.py` | Address Library parsing and site verification against the real `SkyrimSE.exe`; skipped when the exe is absent |
 | `test_runtime_deps.py` | the build gate that keeps the plugin off the player's C++ runtime |
@@ -52,7 +53,7 @@ To run a single test, build and run it directly:
 c++ -std=c++20 -I src tests/test_curves.cpp -o build/native/test_curves && build/native/test_curves
 ```
 
-These tests are the only automated layer, and they can only cover the game-free headers: `Curves.h`, `HookSites.h`, `Patterns.h` and `Stubs.h`. Everything else needs the game. A cross-compiled DLL can also crash in-game on ABI or layout mismatches the compiler cannot see, so **in-game testing is mandatory** before claiming a change works.
+These tests are the only automated layer, and they can only cover the game-free headers: `Curves.h`, `HookSites.h`, `Patterns.h`, `Stubs.h` and `Texts.h`. Everything else needs the game. A cross-compiled DLL can also crash in-game on ABI or layout mismatches the compiler cannot see, so **in-game testing is mandatory** before claiming a change works.
 
 ## Layout
 
@@ -62,6 +63,7 @@ These tests are the only automated layer, and they can only cover the game-free 
 | `src/HookSites.h` | Every patch site: Address Library IDs, offsets and byte patterns per runtime, plus the runtime gate |
 | `src/Patterns.h` | Byte-signature matching |
 | `src/Stubs.h` | The hand-written xbyak trampolines |
+| `src/Texts.h` | Player-facing text that depends on state |
 | `src/Hooks.*` | Resolves and checks every site, installs the hooks, and holds the cap and XP-gain callees |
 | `src/Menu.*` | The Legendary menu: Reset Skill, Upgrade, Cancel |
 | `src/Resources.*` | Reads and spends perks, dragon souls and filled black soul gems |
@@ -77,7 +79,7 @@ These tests are the only automated layer, and they can only cover the game-free 
 
 ### Game-free core
 
-`src/Curves.h`, `HookSites.h`, `Patterns.h` and `Stubs.h` are header-only, so `scripts/test.sh` can compile them standalone. Keep them free of `RE/`, `SKSE/` and `PCH.h` includes and of C++23-only features (`Stubs.h` may use xbyak). The plugin itself builds as C++23 with `src/PCH.h` force-included. **New math goes in `Curves.h`, with a test, not inline in a hook.**
+`src/Curves.h`, `HookSites.h`, `Patterns.h`, `Stubs.h` and `Texts.h` are header-only, so `scripts/test.sh` can compile them standalone. Keep them free of `RE/`, `SKSE/` and `PCH.h` includes and of C++23-only features (`Stubs.h` may use xbyak). The plugin itself builds as C++23 with `src/PCH.h` force-included. **New math goes in `Curves.h`, with a test, not inline in a hook.**
 
 `PowerDecayFormula` deliberately offers both `Factor()`, for computing the value ourselves, and `EffectiveSkill()`, which inverts the vanilla formula so the engine computes the right value from a faked skill. Which one a hook uses depends on whether it replaces the engine's calculation or feeds it a remapped skill.
 
@@ -98,7 +100,7 @@ Consequences:
 - `main.cpp`: the `SKSEPluginLoad` entry point. It runs init, the runtime gate, config load and serialization registration, and sets up a messaging listener. That listener detects conflicting SKSE plugins at `kPostLoad` and notifies the player once at `kDataLoaded` (FR-20).
 - `Config`: a singleton read from `Data/SKSE/Plugins/BeyondMastery.ini` via SimpleIni. `Load()` validates and clamps every value, then **writes the whole file back** so that new keys appear for users after an update. A new setting therefore goes in both the read block and the write-back block, with its comment string.
 - `State`: a singleton holding each skill's cap and paid gates. It persists in the SKSE co-save under unique ID `'BMST'`, as record `'CAPS'` v1 and record `'GATE'` v1. The loader is defensive by contract (FR-22): an unknown record, a wrong version or length, or an implausible value falls back to 100 rather than failing. A save without a `GATE` record gets its gates derived from its caps. Changing a record's layout means bumping its version and handling the old one in `OnLoad`.
-- `Menu`: replaces the call that builds vanilla's Legendary box (hook-points.md §7.1). Reset Skill hands control back to the vanilla callback, so vanilla's second confirmation still appears (FR-31).
+- `Menu`: replaces the call that builds vanilla's Legendary box (hook-points.md §7.1). Reset Skill hands control back to the vanilla callback, so vanilla's second confirmation still appears, with its text replaced (FR-31).
 
 ## Working on hooks
 

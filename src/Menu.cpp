@@ -4,6 +4,7 @@
 #include "Resources.h"
 #include "Skills.h"
 #include "State.h"
+#include "Texts.h"
 
 #include <cstring>
 #include <format>
@@ -88,63 +89,51 @@ namespace BM::Menu
 		void ShowUpgrade(RE::ActorValue a_skill, Callback a_vanilla);
 
 		// Vanilla's second Legendary box takes its text from this game setting
-		// when Run builds it.
+		// when Run builds it; the level it resets to is the other one.
 		constexpr const char* kSecondConfirmSetting = "sLegendaryResetSecondConfirm";
-
-		// What the reset does to the cap here (PRD FR-31): "<Skill> keeps its cap
-		// of N", plus the dragon souls this climb's gates cost, which are lost.
-		// Empty when the cap was never raised, so that box stays pure vanilla.
-		[[nodiscard]] std::string CapNotice(RE::ActorValue a_skill)
-		{
-			const auto  index = Skills::ToIndex(a_skill);
-			const auto& state = State::Get();
-			const auto  cap = state.Cap(index);
-			const auto  souls = Curves::DragonSoulsPaid(state.GatesPaid(index));
-			if (cap <= State::kDefaultCap && souls == 0) {
-				return {};
-			}
-			return souls > 0 ?
-			           std::format("{} keeps its cap of {}, but the {} dragon souls spent on it are lost.",
-						   SkillName(a_skill), cap, souls) :
-			           std::format("{} keeps its cap of {}.", SkillName(a_skill), cap);
-		}
+		constexpr const char* kResetValueSetting = "fLegendarySkillResetValue";
+		constexpr int         kVanillaResetValue = 15;
 
 		// FR-31: Reset Skill is vanilla Legendary. Vanilla confirms twice, and our
 		// menu stands in for the first box: the first Run(1) on this callback
-		// shows vanilla's second box ("...set it to 15 and return its perks.
-		// Are you sure?"), and only that box's Yes resets. Gates are cleared by
-		// Hooks::GetSkillCap once the skill is seen below 100, which is right
-		// whichever answer the player gives.
+		// shows vanilla's second box, and only that box's Yes resets. Gates are
+		// cleared by Hooks::GetSkillCap once the skill is seen below 100, which
+		// is right whichever answer the player gives.
 		void ResetSkill(RE::ActorValue a_skill, const Callback& a_vanilla)
 		{
 			if (!a_vanilla) {
 				return;
 			}
 
-			// The cap notice goes in front of vanilla's own, localised text, for
-			// just the moment Run builds the box -- it copies the text -- and the
-			// setting is restored straight after. Setting::SetString is not used:
-			// it frees the old string, which is exe- or engine-owned memory that
-			// our static CRT must never free.
-			auto*      settings = RE::GameSettingCollection::GetSingleton();
-			auto*      setting = settings ? settings->GetSetting(kSecondConfirmSetting) : nullptr;
-			const auto notice = CapNotice(a_skill);
-			if (setting && setting->data.s && !notice.empty()) {
+			auto*       settings = RE::GameSettingCollection::GetSingleton();
+			auto*       setting = settings ? settings->GetSetting(kSecondConfirmSetting) : nullptr;
+			const auto* resetValue = settings ? settings->GetSetting(kResetValueSetting) : nullptr;
+			const auto  index = Skills::ToIndex(a_skill);
+			const auto& state = State::Get();
+			const auto  confirm = Texts::ResetConfirm(SkillName(a_skill),
+				resetValue ? static_cast<int>(resetValue->GetFloat()) : kVanillaResetValue, state.Cap(index),
+				Curves::DragonSoulsPaid(state.GatesPaid(index)));
+
+			// The box gets our text in place of vanilla's for just the moment Run
+			// builds it -- it copies the text -- and the setting is restored
+			// straight after. Setting::SetString is not used: it frees the old
+			// string, which is exe- or engine-owned memory that our static CRT
+			// must never free.
+			if (setting && setting->data.s) {
 				static std::array<char, 1024> text{};  // fixed address, valid while the setting points at it
 				char* const                   original = setting->data.s;
-				const auto                    composed = std::format("{} {}", notice, original);
-				const auto                    length = std::min(composed.size(), text.size() - 1);
-				std::memcpy(text.data(), composed.data(), length);
+				const auto                    length = std::min(confirm.size(), text.size() - 1);
+				std::memcpy(text.data(), confirm.data(), length);
 				text[length] = '\0';
 
 				setting->data.s = text.data();
 				a_vanilla->Run(kVanillaConfirm);
 				setting->data.s = original;
 			} else {
+				logger::warn("{} not found; Reset Skill shows vanilla's text", kSecondConfirmSetting);
 				a_vanilla->Run(kVanillaConfirm);
 			}
-			logger::info("Reset Skill: {} handed to vanilla Legendary{}", SkillName(a_skill),
-				notice.empty() ? "" : " with the cap notice");
+			logger::info("Reset Skill: {} handed to vanilla Legendary", SkillName(a_skill));
 		}
 
 		void Apply(RE::ActorValue a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
