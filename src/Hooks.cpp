@@ -224,6 +224,28 @@ namespace BM::Hooks
 						name && *name ? name : "?", index, threshold);
 				}
 			}
+
+			// Character XP, logged when it changed since the previous skill XP
+			// gain: the exact amount the last skill's level-ups were worth,
+			// fXPPerSkillRank x each new level (x 100 with the FR-11 clamp).
+			// The game shows character XP only as a bar. Called on the main
+			// thread for every skill XP gain, before that gain is added.
+			static float          lastCharXP = -1.0f;
+			static RE::ActorValue lastSkill = RE::ActorValue::kNone;
+			static float          lastLevel = 0.0f;
+			if (skills && skills->data && player) {
+				const float charXP = skills->data->xp;
+				if (lastCharXP >= 0.0f && charXP != lastCharXP && Skills::IsSkill(lastSkill)) {
+					const auto* info = RE::ActorValueList::GetActorValueInfo(lastSkill);
+					const auto* name = info ? info->GetFullName() : nullptr;
+					logger::info("Character XP {} -> {} ({:+}) after {} {} -> {}", lastCharXP, charXP,
+						charXP - lastCharXP, name && *name ? name : "?", lastLevel,
+						player->AsActorValueOwner()->GetBaseActorValue(lastSkill));
+				}
+				lastCharXP = charXP;
+				lastSkill = a_av;
+				lastLevel = player->AsActorValueOwner()->GetBaseActorValue(a_av);
+			}
 		}
 		return static_cast<float>(state.LimitOf(a_av));
 	}
