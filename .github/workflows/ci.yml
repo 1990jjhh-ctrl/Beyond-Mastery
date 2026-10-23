@@ -1,0 +1,64 @@
+# Checks every pull request and every push to master. The tools are pinned to
+# the versions used locally, because their output differs between versions:
+# clang-format to llvm-mingw's (scripts/setup.sh), xbyak to vcpkg's, gitlint
+# to the one the commit-msg hook runs. See docs/development.md, "Contributing".
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  commits:
+    name: Commit messages (gitlint)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install gitlint==0.19.1
+      - name: Lint the pull request's commits
+        run: gitlint --commits "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+      - name: Lint the pull request title (the commit title of a squash merge)
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$TITLE" | gitlint
+
+  tests:
+    name: Native tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # test_verify_sites.py reads the Address Library fixtures that ship
+          # with CommonLibSSE-NG (lib/commonlibsse-ng/tests/REL).
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: xbyak headers for the stub tests (vcpkg's version)
+        run: git clone --depth 1 --branch v7.28 https://github.com/herumi/xbyak.git build/xbyak
+      - name: scripts/test.sh
+        env:
+          BM_REQUIRE_STUB_TESTS: "1"
+        run: scripts/test.sh
+
+  format:
+    name: Formatting (clang-format)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install clang-format==23.1.0
+      - name: scripts/format.sh --check
+        run: CLANG_FORMAT="$(command -v clang-format)" scripts/format.sh --check

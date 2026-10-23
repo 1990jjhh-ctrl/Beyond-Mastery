@@ -22,6 +22,10 @@ if [[ -n "$XBYAK_H" ]]; then
 	c++ -std=c++20 -Wall -Wextra -Werror -I "$ROOT/src" -I "$XBYAK_INC" \
 		"$ROOT/tests/test_stubs.cpp" -o "$OUT/test_stubs"
 	"$OUT/test_stubs"
+elif [[ -n "${BM_REQUIRE_STUB_TESTS:-}" ]]; then
+	# CI sets this: there a skip would pass silently while testing nothing.
+	echo "xbyak headers not found under build/, and BM_REQUIRE_STUB_TESTS is set" >&2
+	exit 1
 else
 	echo "xbyak headers not found (run scripts/build.sh once), skipping stub tests"
 fi

@@ -10,6 +10,23 @@ Read these before changing behavior:
 - [hook-points.md](hook-points.md) — which engine function each requirement needs, with Address Library IDs, byte offsets and a confidence rating per site. §9a has the verification table.
 - [superpowers/plans/](superpowers/plans/) — the implementation plans, with the reasoning behind what is done and what is deliberately left out.
 
+## Contributing
+
+Every change goes through a branch and a pull request; nothing is committed to `master` directly.
+
+1. **Branch** from `master`, named after the change's type: `feat/…`, `fix/…`, `docs/…`, `ci/…`.
+2. **Commit** with [Conventional Commits](https://www.conventionalcommits.org) titles: `<type>(<scope>)?: <description>`, at most 72 characters, body lines at most 80. Types: `feat`, `fix`, `docs`, `build`, `ci`, `chore`, `refactor`, `style`, `test`, `perf`, `revert`. The rules live in `.gitlint`. Run `gitlint install-hook` once per clone, so a bad message is rejected when you commit rather than in CI.
+3. **Open a pull request** with `gh pr create`. Its title follows the same format, because a squash merge uses it as the commit title.
+4. **CI** (`.github/workflows/ci.yml`) must pass before merging:
+
+| Job | Runs | Pinned to |
+|---|---|---|
+| Commit messages | `gitlint` on the PR's commits and on its title (PRs only) | gitlint 0.19.1 |
+| Native tests | `scripts/test.sh` with `BM_REQUIRE_STUB_TESTS=1`, so the stub tests cannot be skipped | xbyak v7.28 (vcpkg's version) |
+| Formatting | `scripts/format.sh --check` | clang-format 23.1.0 (llvm-mingw's version) |
+
+CI does not build the DLL and cannot run the game, so `scripts/build.sh` and the in-game check stay part of every change that touches the plugin.
+
 ## Build
 
 Development happens on a Linux host. The DLL is cross-compiled with clang-cl and lld-link against an xwin MSVC sysroot.
