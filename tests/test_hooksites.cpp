@@ -85,7 +85,7 @@ static void TestEverySiteVerified()
 static void TestLegendaryBoxSites()
 {
 	using namespace BM::HookSites;
-	CHECK(kAllSites.size() == 11);
+	CHECK(kAllSites.size() == 13);
 	CHECK(kLegendaryBoxA.ae.id == 52510 && kLegendaryBoxA.ae.offset == 0x5E3);
 	CHECK(kLegendaryBoxB.ae.id == 52520 && kLegendaryBoxB.ae.offset == 0x25C);
 	CHECK(kLegendaryCallOffset == 15);
@@ -102,11 +102,25 @@ static void TestExistsOn()
 		CHECK(!ExistsOn(*s, false));
 		CHECK(ExistsOn(*s, true));
 	}
-	// Every other site exists on both runtimes.
-	for (const auto* s : kAllSites) {
-		if (s != &kLegendaryBoxA && s != &kLegendaryBoxB)
-			CHECK(ExistsOn(*s, false) && ExistsOn(*s, true));
-	}
+	// Every site from before SE went out of scope exists on both runtimes;
+	// the Legendary and formula-scaling sites were only located on AE.
+	for (const auto* s : { &kGetSkillCap, &kImprovePlayerSkillPoints, &kImproveLevelExpBySkillLevel,
+			 &kPlayerAVOGetCurrent, &kUpdateSkillList, &kCalculateChargePointsPerUse })
+		CHECK(ExistsOn(*s, false) && ExistsOn(*s, true));
+}
+
+static void TestScalingSites()
+{
+	using namespace BM::HookSites;
+	CHECK(kGetClampedActorValue.ae.id == 27284 && kGetClampedActorValue.ae.offset == 0);
+	CHECK(kBarterFinalClamp.ae.id == 50945 && kBarterFinalClamp.ae.offset == 0x80A);
+	CHECK(kBarterFinalClamp.patternAE.size() == kBarterFinalClampLength * 3 - 1);
+	CHECK(kCalculateChargePointsPerUse.patternAE.substr(kChargeCallOffset * 3, 2) == "E8");
+	CHECK(kSkillListCallA.patternAE.substr(kSkillListCallOffsetA * 3, 2) == "E8");
+	CHECK(kSkillListCallB.patternAE.substr(kSkillListCallOffsetB * 3, 2) == "E8");
+	CHECK(kSkillListCallC.patternAE.substr(kSkillListCallOffsetC * 3, 2) == "E8");
+	for (const auto* s : { &kGetClampedActorValue, &kBarterFinalClamp, &kSkillListCallA, &kSkillListCallB, &kSkillListCallC })
+		CHECK(!ExistsOn(*s, false) && ExistsOn(*s, true));
 }
 
 int main()
@@ -114,6 +128,7 @@ int main()
 	TestPatternsWellFormed();
 	TestLegendaryBoxSites();
 	TestExistsOn();
+	TestScalingSites();
 	TestRuntimeGate();
 	TestEverySiteVerified();
 	if (g_failures == 0)

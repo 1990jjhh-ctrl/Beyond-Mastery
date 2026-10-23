@@ -11,12 +11,10 @@
 // about the game binary are taken (IDs, offsets, instruction bytes), no code.
 //
 // "verified" is set once a site has been confirmed in our own disassembly.
-// All nine were confirmed with scripts/verify_sites.py against SkyrimSE.exe
-// 1.7.104.0 using the 1.7.99 address library: every AE id resolved and the
-// expected bytes were present, eight at a +0x260 drift from the 1.7.99
-// offsets and CapMagickaCDR unmoved. Drift is region-local, so it is noise
-// from the 1.7.99 -> 1.7.104 rebuild, not an error in the table; at runtime
-// the player's own address library supplies the exact offsets.
+// Every site is confirmed with scripts/verify_sites.py against SkyrimSE.exe
+// 1.7.104.0: at drift 0 with its own address library, and through a
+// region-local drift with the 1.7.99 one (hook-points.md §9a). At runtime the
+// player's own address library supplies the exact offsets.
 //
 // The AE ids, byte offsets and patterns hold unchanged on 1.7.x, so there is
 // no separate 1.7 column: REL::RelocationID picks the AE id for every
@@ -144,7 +142,9 @@ namespace BM::HookSites
 		true
 	};
 
-	// Skills menu list update; remap is bypassed inside it (FR-29).
+	// Skills menu list update, StatsMenu::UpdateSkillList(StatsMenu*). Not
+	// patched itself: its three direct calls are, so the remap is bypassed for
+	// exactly its duration (FR-29), and each call must still target it.
 	inline constexpr Site kUpdateSkillList{
 		"UpdateSkillList",
 		{ 51652, 0 },
@@ -154,14 +154,29 @@ namespace BM::HookSites
 		true
 	};
 
-	// Vanilla clamp of the magic skill to 100 in the spell cost formula.
-	// SE: "jae <end>", AE: "minss xmm1, [100.0]".
-	inline constexpr Site kCapMagickaCDR{
-		"CapMagickaCDR",
-		{ 26616, 0x34 },
-		{ 27284, 0x2C },
-		"73 44",
-		"F3 0F 5D 0D ?? ?? ?? ??",
+	// mov rcx, <menu>; call UpdateSkillList, plus what follows until each
+	// pattern is unique within the verifier's drift window. AE/1.7.x only.
+	inline constexpr std::uint32_t kSkillListCallOffsetA = 3;
+	inline constexpr std::uint32_t kSkillListCallOffsetB = 3;
+	inline constexpr std::uint32_t kSkillListCallOffsetC = 4;
+
+	inline constexpr Site kSkillListCallA{ "SkillListCallA", { 0, 0 }, { 52510, 0x950 }, "", "48 8B CE E8 ?? ?? ?? ?? 48 8B CE E8 ?? ?? ?? ?? 48 8B CE", true };
+	inline constexpr Site kSkillListCallB{ "SkillListCallB", { 0, 0 }, { 52532, 0x5AC }, "", "48 8B CF E8 ?? ?? ?? ?? 48 8B CF E8 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ??", true };
+	inline constexpr Site kSkillListCallC{ "SkillListCallC", { 0, 0 }, { 52591, 0x246 }, "", "48 8B 4E 10 E8 ?? ?? ?? ?? 48 8B 5E 10", true };
+
+	// ActorValueOwner::GetClampedActorValue: the engine's generic clamp of an
+	// actor value by its ActorValueInfo flags -- skills to [0, 100]. Spell
+	// cost, barter Speech, Lockpicking, Pickpocket and Sneak read the skill
+	// through it, so it is replaced whole and lifts the ceiling for the
+	// player's skills only (hook-points.md §5.2). The bytes are its entry:
+	// push rbx; sub rsp, 0x20; mov rax, [rcx]; movsxd rbx, edx; mov edx, ebx;
+	// call [rax+8] (GetActorValue). AE/1.7.x only.
+	inline constexpr Site kGetClampedActorValue{
+		"GetClampedActorValue",
+		{ 0, 0 },
+		{ 27284, 0 },
+		"",
+		"40 53 48 83 EC 20 48 8B 01 48 63 DA 8B D3 FF 50 08",
 		true
 	};
 
@@ -177,23 +192,10 @@ namespace BM::HookSites
 		true
 	};
 
-	inline constexpr Site kBeginMaxChargeCalculation{
-		"BeginMaxChargeCalculation",
-		{ 50557, 0xE8 },
-		{ 51449, 0xE9 },
-		"F3 0F 11 84 24 C0 00 00 00 48 85 C9",
-		"F3 0F 11 84 24 A0 00 00 00 48 85 C9",
-		true
-	};
-
-	inline constexpr Site kEndMaxChargeCalculation{
-		"EndMaxChargeCalculation",
-		{ 50557, 0x207 },
-		{ 51449, 0x179 },
-		"F3 0F 10 84 24 C0 00 00 00 41 0F 2F C0 77 04 41 0F 28 C0",
-		"F3 0F 10 84 24 A0 00 00 00 F3 41 0F 5F C1",
-		true
-	};
+	// The call to the charge-per-use function (26494), its only caller, at the
+	// end of the pattern. Max charge (soul charge through perk entry 0x4F)
+	// never reads the skill, so it needs no site (hook-points.md §5.3).
+	inline constexpr std::uint32_t kChargeCallOffset = 31;
 
 	// --- Legendary box (hook-points.md §7.1, FR-14) --------------------------
 	//
@@ -234,8 +236,22 @@ namespace BM::HookSites
 		true
 	};
 
-	// --- Barter (hook-points.md §6) ------------------------------------------
-	// Not located yet. Find via cross-references to fBarterMin / fBarterMax.
+	// --- Barter (hook-points.md §6, FR-26) ----------------------------------
+
+	// The barter menu's final price clamp, after perk entries 8 and 0x3C:
+	// buy = max(fMinBuyMult, buy, 1.0) at [rbp+0xA0], sell = min(fMaxSellMult,
+	// sell, 1.0) at [rbp+0x98]. Only xmm1 (= buy) is live after it. Replaced
+	// whole by a call to a stub that adds the 1.2 ratio floor. AE/1.7.x only.
+	inline constexpr std::size_t kBarterFinalClampLength = 64;
+
+	inline constexpr Site kBarterFinalClamp{
+		"BarterFinalClamp",
+		{ 0, 0 },
+		{ 50945, 0x80A },
+		"",
+		"F3 0F 10 0D ?? ?? ?? ?? F3 0F 5F 8D A0 00 00 00 F3 0F 5F 0D ?? ?? ?? ?? F3 0F 11 8D A0 00 00 00 F3 0F 10 05 ?? ?? ?? ?? F3 0F 5D 85 98 00 00 00 F3 0F 5D 05 ?? ?? ?? ?? F3 0F 11 85 98 00 00 00",
+		true
+	};
 
 	inline constexpr std::array kAllSites{
 		&kGetSkillCap,
@@ -243,12 +259,14 @@ namespace BM::HookSites
 		&kImproveLevelExpBySkillLevel,
 		&kPlayerAVOGetCurrent,
 		&kUpdateSkillList,
-		&kCapMagickaCDR,
+		&kSkillListCallA,
+		&kSkillListCallB,
+		&kSkillListCallC,
+		&kGetClampedActorValue,
 		&kCalculateChargePointsPerUse,
-		&kBeginMaxChargeCalculation,
-		&kEndMaxChargeCalculation,
 		&kLegendaryBoxA,
 		&kLegendaryBoxB,
+		&kBarterFinalClamp,
 	};
 
 	// --- Game settings and functions (no patching) ---------------------------

@@ -59,61 +59,97 @@ FR-11 default is vanilla (unclamped), so this hook is **only installed when `bCl
 
 ## 5. Effective skill for formulas (FR-24 … FR-29)
 
-### 5.1 Central hook
+Re-derived from SkyrimSE.exe 1.7.104 on 2026-10-23 (plan
+`docs/superpowers/plans/2026-10-23-formula-scaling.md`). Everything below is
+AE/1.7.x; SE 1.5.97 is out of scope (PRD §3). Player only — NPCs stay vanilla.
 
-| What | SE | AE | Conf. |
-|---|---|---|---|
-| `PlayerCharacter` ActorValueOwner `GetActorValue` (current value) | 37517 (whole fn) | 38462 (whole fn) | H |
-| Skills-menu list update, to bypass the remap in UI (FR-29) | 51652 (whole fn) | 52525 (whole fn) | H |
+### 5.1 Central remap: the player's vtable slot
 
-For the player's skill actor values with current value s > 100, the hook returns a remapped value `s_eff(s)`. NPCs and non-skill AVs pass through. While the skills menu builds its list, the remap is disabled so the real level is shown.
+| What | AE | Conf. |
+|---|---|---|
+| `Actor::GetActorValue` (current value) | 38462 | H |
+| PlayerCharacter's ActorValueOwner vtable, slot 1 (= NG `RE::VTABLE_PlayerCharacter[5]`) | 208050 | H |
+| Skills menu list, `StatsMenu::UpdateSkillList(StatsMenu*)` | 52525 | H |
+| Its three direct calls | 52510+0x950, 52532+0x5AC, 52591+0x246 | H |
 
-This replaces one hook per formula with **one hook per skill**. Each skill feeds essentially one formula family, so the remap can be chosen per skill:
+`38462` is shared by Actor, Character and PlayerCharacter — it is slot 1 of the
+ActorValueOwner vtables 207521, 207896 and 208050. Nothing in the exe calls it
+directly, so replacing slot 1 of **208050** catches every read of the player's
+skills and no NPC's. The callee returns `s_eff` for skills above 100: form A for
+most, the inverse of the spell-cost formula for magic schools (§5.2), the inverse
+of the barter formula for Speech (§6).
 
-| Skills | Remap |
-|---|---|
-| One-Handed, Two-Handed, Archery, Light/Heavy Armor, Block, Smithing, Alchemy, Lockpicking, Pickpocket, Sneak | Form A: `100 + 200·(√(s/100) − 1)` |
-| Enchanting | Form A, **plus charge-cost limit (see 5.3)** |
-| Alteration, Conjuration, Destruction, Illusion, Restoration | Form B via inverse of the cost formula (5.2) |
-| Speech | see §6 |
+The engine's XP routine reads the skill through slot **3** (`call [rax+0x18]`,
+`GetBaseActorValue`), so leveling and our cap hook never see `s_eff`.
 
-**Consequence:** any other reader of the player's current skill value (Papyrus `GetActorValue`, perk conditions, other mods) also sees `s_eff`. For s ≤ 100 nothing changes. Above 100 values stay ≥ 100, so vanilla perk requirements remain satisfied. Mods that test for skill > 100 see the compressed value. Acceptable; document in the readme.
+While the skills menu builds its list the remap is off (FR-29). The function is
+not patched itself: its three calls are redirected to a wrapper that opens a
+scope around the original, each checked to still target 52525.
 
-### 5.2 Spell cost (FR-25)
+### 5.2 The engine's skill clamp and spell cost (FR-25)
 
-| What | SE | AE | Conf. |
-|---|---|---|---|
-| Vanilla clamp of the skill to 100 in the cost formula | 26616+0x34 (`jae` → patch) | 27284+0x2C (`minss 100.0` → patch) | H |
+| What | AE | Conf. |
+|---|---|---|
+| `ActorValueOwner::GetClampedActorValue` (NG `RELOCATION_ID(26616, 27284)`) | 27284 | H |
+| Spell cost skill factor | 26505 | H |
 
-**Vanilla already clamps magic skills at 100 in the spell cost formula.** Without removing this clamp, form B has no effect. With it removed, the remap returns
+`27284` is **not** a spell-cost clamp: it is the engine's generic clamp of an
+actor value by its `ActorValueInfo::flags` — `kClampAsSkill` (1<<4) to [0, 100],
+`kClampAsSpecialStat` (1<<3) to [0 or 1, 10] (1 with
+`kSpecialStatClampsAsNonZero`, 1<<2). Its 13 callers include Pickpocket,
+Lockpicking and Sneak (constant AV 0xD/0xE/0xF), spell cost (11017, 11494 →
+26505) and barter Speech (§6). Without lifting the ceiling, `s_eff` above 100
+would be cut back to 100 for all of them. The function is replaced whole
+(`jmp` at its entry, bytes `40 53 48 83 EC 20 48 8B 01 48 63 DA 8B D3 FF 50 08`):
+vanilla rules for everyone, except that the player's skills are only kept ≥ 0.
 
-`s_eff = (1/b) · (1 − m(s))^(1/e)`, with `m(s) = 0.25 + (m₁₀₀ − 0.25)·e^(−(s−100)/τ)`
+Spell cost (26505) for the player is
+`cost · fMagicCasterPCSkillCostMult · (1 − (int(skill) · fMagicCasterPCSkillCostBase)^fMagicPCSkillCostScale)`;
+NPCs use `fMagicCasterSkillCostBase` / `fMagicSkillCostScale` /
+`fMagicCasterSkillCostMult`. The skill arrives **truncated to int**. Form B
+reaches it through the remap: `s_eff = (1/b) · (1 − m(s))^(1/e)` with the PC
+GMSTs read at runtime (Skyrim.esm: b = 0.0025, e = 0.65), so `s_eff → ≈ 257` as
+`s → ∞`. Perk, equipment and dual-cast multipliers apply afterwards, as FR-25
+requires.
 
-where `b` and `e` are the formula's base and exponent (vanilla 1/400 and 0.65; read from the game settings at runtime, not hardcoded). The engine then computes exactly `m(s)`. Limit: s_eff → ≈ 257 as s → ∞. Continuity at 100 checked numerically: s_eff(100) = 99.96.
+### 5.3 Enchanting charge cost (FR-30)
 
-Perk/equipment/dual-cast multipliers are applied by the engine after the skill factor, as FR-25 requires.
+| What | AE | Conf. |
+|---|---|---|
+| Charge per use, `(1 − (skill·fEnchantingSkillCostBase)^fEnchantingSkillCostScale) · fEnchantingSkillCostMult · base^fEnchantingCostExponent` | 26494 | H |
+| Its only call (pattern 51449+0x314, `E8` at +31) | 51449+0x333 | H |
 
-### 5.3 Enchanting charge cost — new finding
+The skill passed is `GetActorValue(Enchanting)`, i.e. `s_eff`; the replacement
+ignores it and uses the **real** skill (FR-30): vanilla up to 100, above it the
+skill-free part `fEnchantingSkillCostMult · base^fEnchantingCostExponent`
+(the original called with skill 0) times form B. Enchanting magnitude keeps form A
+through the remap.
 
-The vanilla charge-per-use formula is `base × (1 − (level × fEnchantingSkillCostBase)^fEnchantingSkillCostScale)` and **breaks at level ≥ 200** (zero, then undefined/negative cost). The reference mod caps the level in this formula at 199.
-
-With form A, Enchanting s_eff reaches 199 at s ≈ 224, so this is reachable in tier 2.
-
-| What | SE | AE | Conf. |
-|---|---|---|---|
-| Charge-points-per-use calculation (call site) | 50557+0x344 | 51449+0x314 | H |
-| Max-charge region begin / end (weapon enchant) | 50557+0xE8 / +0x207 | 51449+0xE9 / +0x179 | H |
-
-**Decision (PRD FR-30):** the charge-points-per-use call is replaced. Our implementation computes the vanilla formula for real skill ≤ 100 and form B (limit = half the value at 100) above, using the **real** Enchanting skill, not s_eff. The GMSTs `fEnchantingSkillCostBase`, `fEnchantingSkillCostScale`, `fEnchantingSkillCostMult`, `fEnchantingCostExponent` are read at runtime (SE 506021/506025/506023/506027, AE 375771/375777/375774/375780; Conf. H). Magnitude keeps form A via the AVO hook.
+Max charge (51449+0xE9 … +0x179) is the soul's charge through perk entry 0x4F
+(`ModSoulGemEnchanting`); it never reads the skill and needs no hook.
 
 ## 6. Barter (FR-26)
 
-**Confidence L.** The reference mod does not touch barter. Unknown:
+| What | AE | Conf. |
+|---|---|---|
+| Barter menu price setup | 50945 | H |
+| Skill price factors | 26464 | H |
+| Final clamp after perks | 50945+0x80A (64 bytes) | H |
 
-1. Whether vanilla clamps Speech at 100 inside the price formula (as it does for magic).
-2. Where the final buy/sell price is computed, so the ≥ 1.2 ratio can be enforced.
+`50945` reads Speech as `GetClampedActorValue(player, 0x11)` — **vanilla clamps
+it at 100** (§5.2). `26464` then computes
+`buy = max(fBarterMax − (fBarterMax − fBarterMin) · s · 0.01, fBarterBuyMin)` and
+`sell = min(1/buy, fBarterSellMax)`. Perk entries 8 (`ModBuyPrices`) and 0x3C
+(`ModSellPrices`) follow, then the final clamp
+`buy = max(fMinBuyMult, buy, 1.0)` → `[rbp+0xA0]`,
+`sell = min(fMaxSellMult, sell, 1.0)` → `[rbp+0x98]`; afterwards only `xmm1`
+(= buy) is live.
 
-Plan: locate the price function in Ghidra via the game settings `fBarterMin` / `fBarterMax` (cross-references to their GMST objects), on SE 1.5.97 and AE. Then either remap Speech through the AVO hook (if unclamped) or hook the price function directly and apply form B plus the 1.2 floor there.
+Form B reaches the skill factor through the remap: Speech's `s_eff` is the
+inverse of the linear formula for an asymptote towards `√fBarterMinRatio`
+(before perks the ratio is `buy/sell = buy²`). The final clamp is replaced by a
+stub that runs the vanilla clamp and then floors `buy ≥ fBarterMinRatio · sell`,
+which holds after perks and Fortify Barter.
 
 ## 7. Cap-raise transaction (FR-5 … FR-7, FR-14 … FR-17, FR-31)
 
@@ -206,54 +242,39 @@ Detect other SKSE plugins at load (`SKSE::PluginInfo` via the SKSE interface, or
 expected instructions in the real binary.
 
 **Exact run.** Against `SkyrimSE.exe 1.7.104.0` with its own
-`versionlib-1-7-104-0.bin` (Address Library All in One v13), **all nine sites
-match at drift 0** — every ID resolves to exactly the address whose bytes the
-table expects:
+`versionlib-1-7-104-0.bin` (Address Library All in One v13), **all 13 sites
+match at drift 0**:
 
 ```
 GetSkillCap                  0x78dd1f   ImprovePlayerSkillPoints     0x78dda1
 ImproveLevelExpBySkillLevel  0x78df7b   PlayerAVOGetCurrent          0x6c4cb0
-UpdateSkillList              0x979790   CapMagickaCDR                0x4471ac
-CalculateChargePointsPerUse  0x9275e4   BeginMaxChargeCalculation    0x9273b9
-EndMaxChargeCalculation      0x927449
+UpdateSkillList              0x979790   SkillListCallA               0x9773a0
+SkillListCallB               0x97cf7c   SkillListCallC               0x9823a6
+GetClampedActorValue         0x447180   CalculateChargePointsPerUse  0x9275e4
+LegendaryBoxA                0x977033   LegendaryBoxB                0x9787dc
+BarterFinalClamp             0x900d8a
 ```
 
 **Corroborating run.** The same check against the `versionlib-1-7-99-0.bin`
-database shipped as a CommonLibSSE test fixture reaches the identical nine
-addresses via a per-region drift, which is why the table below is kept: it was
-how the sites were first established, before an exact database was available,
-and it is the procedure to repeat on a runtime no database covers yet.
-
-| Site | AE id + off | Address in 1.7.104 | Drift vs 1.7.99 | Result |
-|---|---|---|---|---|
-| GetSkillCap | 41561 + 0x6F | 0x78dd1f | +0x260 | match |
-| ImprovePlayerSkillPoints | 41561 + 0xF1 | 0x78dda1 | +0x260 | match |
-| ImproveLevelExpBySkillLevel | 41561 + 0x2CB | 0x78df7b | +0x260 | match |
-| PlayerAVOGetCurrent | 38462 + 0 | 0x6c4cb0 | +0x260 | match |
-| UpdateSkillList | 52525 + 0 | 0x979790 | +0x260 | match |
-| CapMagickaCDR | 27284 + 0x2C | 0x4471ac | 0 | match |
-| CalculateChargePointsPerUse | 51449 + 0x314 | 0x9275e4 | +0x260 | match |
-| BeginMaxChargeCalculation | 51449 + 0xE9 | 0x9273b9 | +0x260 | match |
-| EndMaxChargeCalculation | 51449 + 0x179 | 0x927449 | +0x260 | match |
-
-Drift is **region-local**, not a single global shift: the two functions holding
-eight of the sites moved by 0x260 between 1.7.99 and 1.7.104 while the spell
-cost function did not move at all. The drift is an artefact of comparing against
-a neighbouring database — at runtime the player's own address library gives the
-exact offsets — so it is evidence that the ids and offsets are right, not a
-correction to apply.
+database shipped as a CommonLibSSE test fixture reaches the same addresses via a
+per-region drift (`tests/test_verify_sites.py` repeats it): +0x260 for the sites
+in the skill-XP and enchanting functions, 0 for `GetClampedActorValue`. Drift is
+region-local — an artefact of comparing against a neighbouring database, not a
+correction to apply; at runtime the player's own address library gives the exact
+offsets. Short patterns must be unique within the ±0x1000 search window, which
+is why the three skills-menu call patterns run on past the call.
 
 Semantics confirmed by disassembly, not just byte equality:
 
-- **GetSkillCap** is `call [rax+0x18]` (current skill level) → `movss xmm10, [rip+..]`
-  → `comiss xmm0, xmm10` → `jae <skip XP gain>`. The constant at `0x141b5bf14`
-  reads exactly **100.0**, and it is shared with the spell cost clamp. Replacing
-  that load with the per-skill cap is the whole cap mechanic (FR-1 … FR-4).
+- **GetSkillCap** is `call [rax+0x18]` (`GetBaseActorValue`, the base skill
+  level) → `movss xmm10, [rip+..]` → `comiss xmm0, xmm10` → `jae <skip XP gain>`.
+  The constant at `0x141b5bf14` reads exactly **100.0**, and it is shared with the
+  engine's skill clamp. Replacing that load with the per-skill cap is the whole
+  cap mechanic (FR-1 … FR-4).
 - **CalculateChargePointsPerUse** loads `edx = 0x17` — `ActorValue::kEnchanting` —
-  before the virtual `GetActorValue` call, then calls the charge computation,
-  confirming the call site identified in §5.3.
-
-Still outstanding from §9: the barter price function (§6) remains unlocated.
+  before the virtual `GetActorValue` call, then calls 26494 (§5.3).
+- The sites in §5 and §6 were established by disassembly first (2026-10-23) and
+  their GMST operands identified through each `Setting` object's name pointer.
 
 ## 10. License
 

@@ -83,7 +83,7 @@ class TestSiteTableParsing(unittest.TestCase):
         self.sites = vs.parse_sites(ROOT / "src" / "HookSites.h")
 
     def test_parses_every_site_from_the_header(self):
-        self.assertEqual(len(self.sites), 11)
+        self.assertEqual(len(self.sites), 13)
         self.assertEqual(
             [s.name for s in self.sites][:2],
             ["GetSkillCap", "ImprovePlayerSkillPoints"],
@@ -166,10 +166,10 @@ class TestAgainstRealBinary(unittest.TestCase):
         sites = vs.parse_sites(ROOT / "src" / "HookSites.h")
         by_name = {s.name: vs.check_site(self.pe, db, s, "ae") for s in sites}
         # Eight sites sit in regions shifted by 0x260 between 1.7.99 and 1.7.104;
-        # the spell-cost function did not move.
+        # GetClampedActorValue did not move.
         self.assertEqual(by_name["GetSkillCap"].drift, 0x260)
         self.assertEqual(by_name["CalculateChargePointsPerUse"].drift, 0x260)
-        self.assertEqual(by_name["CapMagickaCDR"].drift, 0x0)
+        self.assertEqual(by_name["GetClampedActorValue"].drift, 0x0)
 
     def test_cap_constant_is_one_hundred(self):
         # The constant the cap hook replaces (PRD FR-1..FR-4).
