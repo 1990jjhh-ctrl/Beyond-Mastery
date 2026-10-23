@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 using namespace BM::Curves;
 
@@ -400,6 +401,24 @@ static void TestRemapNeverBelow100WhenLimitIsNotBelowValueAt100()
 	check([&](double s) { return moddedSpell.EffectiveSkill(s, 0.59); });
 }
 
+static void TestClampTreatsNonFiniteLikeTheEngine()
+{
+	// The engine clamps with minss/maxss, which turn NaN and infinity into the
+	// upper bound. Non-finite values get exactly that, for the player too:
+	// lifting the ceiling only applies to real numbers.
+	// Exact equality, not CHECK_NEAR: |NaN - x| > tol is false, so a NaN
+	// result would slip through a tolerance check.
+	using namespace BM::Curves;
+	const double nan = std::numeric_limits<double>::quiet_NaN();
+	const double inf = std::numeric_limits<double>::infinity();
+	CHECK(ClampActorValue(nan, kClampAsSkill, false) == 100.0);
+	CHECK(ClampActorValue(nan, kClampAsSkill, true) == 100.0);
+	CHECK(ClampActorValue(inf, kClampAsSkill, true) == 100.0);
+	CHECK(ClampActorValue(-inf, kClampAsSkill, true) == 0.0);
+	CHECK(ClampActorValue(nan, kClampAsSpecialStat, false) == 10.0);
+	CHECK(ClampActorValue(nan, kClampAsSpecialStat | kSpecialStatClampsAsNonZero, false) == 10.0);
+}
+
 int main()
 {
 	TestDragonSoulsPaid();
@@ -427,6 +446,7 @@ int main()
 	TestEnchantChargeVanillaUpTo100();
 	TestRemapsFiniteAtConfigExtremes();
 	TestRemapNeverBelow100WhenLimitIsNotBelowValueAt100();
+	TestClampTreatsNonFiniteLikeTheEngine();
 	if (g_failures == 0) {
 		std::printf("All curve tests passed.\n");
 	}

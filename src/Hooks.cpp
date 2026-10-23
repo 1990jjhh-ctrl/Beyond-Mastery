@@ -213,10 +213,12 @@ namespace BM::Hooks
 				const auto threshold = skills->data->skills[index].levelThreshold;
 				if (Curves::ThresholdNeedsDouble(threshold)) {
 					warned[index] = true;
+					const auto* info = RE::ActorValueList::GetActorValueInfo(a_av);
+					const auto* name = info ? info->GetFullName() : nullptr;
 					logger::warn(
-						"Skill {} needs {} XP for its next level, past float precision (2^24); "
+						"{} (skill {}) needs {} XP for its next level, past float precision (2^24); "
 						"XP gains may round (FR-10)",
-						index, threshold);
+						name && *name ? name : "?", index, threshold);
 				}
 			}
 		}

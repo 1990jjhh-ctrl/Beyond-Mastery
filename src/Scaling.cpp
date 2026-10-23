@@ -43,18 +43,22 @@ namespace BM::Scaling
 
 		Settings g_settings;
 
+		// The engine functions our callees forward to. Stored with release
+		// before the patch that makes the callee reachable is written, and
+		// loaded with acquire on every call, so a thread that reaches the
+		// callee always sees them. On x64 both are plain movs.
 		using GetActorValue_t = float (*)(RE::ActorValueOwner*, RE::ActorValue);
-		GetActorValue_t g_original = nullptr;
-
-		// Open skills-menu scopes. GetActorValue runs on several threads, so
-		// this is atomic; while the menu builds its list, other threads
-		// reading the player's skill briefly see the real value too.
-		std::atomic<int> g_menuScopes{ 0 };
+		std::atomic<GetActorValue_t> g_original{ nullptr };
 
 		// The engine's charge-per-use function (26494), taken from the call
 		// site at install: (1 - (skill * base)^scale) * mult * cost^exponent.
 		using ChargePerUse_t = float (*)(float, float);
-		ChargePerUse_t g_charge = nullptr;
+		std::atomic<ChargePerUse_t> g_charge{ nullptr };
+
+		// Open skills-menu scopes on this thread. StatsMenu::UpdateSkillList
+		// runs synchronously on the UI thread and reads the skills itself, so
+		// the remap is off for exactly that thread and nowhere else (FR-29).
+		thread_local int t_menuScopes = 0;
 
 		[[nodiscard]] Curves::PowerDecayFormula EnchantCharge() noexcept
 		{
@@ -123,13 +127,15 @@ namespace BM::Scaling
 
 	void SetOriginalGetActorValue(std::uintptr_t a_original) noexcept
 	{
-		g_original = reinterpret_cast<GetActorValue_t>(a_original);
+		g_original.store(reinterpret_cast<GetActorValue_t>(a_original), std::memory_order_release);
 	}
 
 	float GetActorValue(RE::ActorValueOwner* a_this, RE::ActorValue a_av)
 	{
-		const float value = g_original(a_this, a_av);
-		if (value <= Curves::kVanillaCap || g_menuScopes.load(std::memory_order_relaxed) > 0) {
+		const float value = g_original.load(std::memory_order_acquire)(a_this, a_av);
+		// !(value > 100) rather than value <= 100: NaN fails both, and is
+		// passed through untouched, as the engine would return it.
+		if (!(value > Curves::kVanillaCap) || t_menuScopes > 0) {
 			return value;
 		}
 		return EffectiveSkill(a_av, value);
@@ -141,7 +147,8 @@ namespace BM::Scaling
 		if (!avo) {
 			return 0.0f;
 		}
-		return g_original ? g_original(avo, a_av) : avo->GetActorValue(a_av);
+		const auto original = g_original.load(std::memory_order_acquire);
+		return original ? original(avo, a_av) : avo->GetActorValue(a_av);
 	}
 
 	float GetClampedActorValue(RE::ActorValueOwner* a_this, RE::ActorValue a_av)
@@ -160,14 +167,14 @@ namespace BM::Scaling
 	void UpdateSkillList(RE::StatsMenu* a_menu)
 	{
 		static REL::Relocation<void(RE::StatsMenu*)> original{ RELOCATION_ID(51652, 52525) };
-		g_menuScopes.fetch_add(1, std::memory_order_relaxed);
+		++t_menuScopes;
 		original(a_menu);
-		g_menuScopes.fetch_sub(1, std::memory_order_relaxed);
+		--t_menuScopes;
 	}
 
 	void SetOriginalChargePerUse(std::uintptr_t a_original) noexcept
 	{
-		g_charge = reinterpret_cast<ChargePerUse_t>(a_original);
+		g_charge.store(reinterpret_cast<ChargePerUse_t>(a_original), std::memory_order_release);
 	}
 
 	float ChargePerUse(float a_baseCost, float)
@@ -175,11 +182,12 @@ namespace BM::Scaling
 		// The engine passes GetActorValue(Enchanting), which is s_eff; FR-30
 		// wants the real skill. Vanilla up to 100; above it the skill-free part
 		// (the engine's own function at skill 0) times form B.
+		const auto charge = g_charge.load(std::memory_order_acquire);
 		const auto real = RealActorValue(RE::ActorValue::kEnchanting);
-		if (real <= Curves::kVanillaCap) {
-			return g_charge(a_baseCost, real);
+		if (!(real > Curves::kVanillaCap)) {
+			return charge(a_baseCost, real);  // vanilla, NaN included
 		}
-		return static_cast<float>(g_charge(a_baseCost, 0.0f) * EnchantCharge().Factor(real, EnchantChargeLimit()));
+		return static_cast<float>(charge(a_baseCost, 0.0f) * EnchantCharge().Factor(real, EnchantChargeLimit()));
 	}
 
 	void BarterClamp(float* a_buy, float* a_sell)

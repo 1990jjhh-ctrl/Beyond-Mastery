@@ -421,18 +421,35 @@ namespace BM::Curves
 	inline constexpr std::uint32_t kClampAsSpecialStat = 1u << 3;
 	inline constexpr std::uint32_t kClampAsSkill = 1u << 4;
 
+	// SSE minss / maxss, which the engine's clamp uses: the second operand
+	// wins unless the first is strictly smaller (larger), so NaN gives way to
+	// the bound. std::min/std::max would keep the NaN instead.
+	[[nodiscard]] constexpr double Minss(double a_value, double a_bound) noexcept
+	{
+		return a_value < a_bound ? a_value : a_bound;
+	}
+
+	[[nodiscard]] constexpr double Maxss(double a_value, double a_bound) noexcept
+	{
+		return a_value > a_bound ? a_value : a_bound;
+	}
+
 	// The engine's clamp of an actor value by its flags: skills to [0, 100],
-	// special stats to [0 or 1, 10], anything else unchanged. With
-	// a_liftSkillCeiling -- the player's skills -- a skill is only kept >= 0,
-	// so values above 100 reach the formulas (FR-24).
+	// special stats to [0 or 1, 10], anything else unchanged -- with the
+	// engine's NaN and infinity behaviour. With a_liftSkillCeiling -- the
+	// player's skills -- a finite skill is only kept >= 0, so values above
+	// 100 reach the formulas (FR-24); a non-finite one is clamped as vanilla.
 	[[nodiscard]] inline double ClampActorValue(double a_value, std::uint32_t a_flags, bool a_liftSkillCeiling) noexcept
 	{
 		if (a_flags & kClampAsSkill) {
-			return a_liftSkillCeiling ? std::max(a_value, 0.0) : std::max(std::min(a_value, kVanillaCap), 0.0);
+			if (a_liftSkillCeiling && std::isfinite(a_value)) {
+				return Maxss(a_value, 0.0);
+			}
+			return Maxss(Minss(a_value, kVanillaCap), 0.0);
 		}
 		if (a_flags & kClampAsSpecialStat) {
 			const double floor = (a_flags & kSpecialStatClampsAsNonZero) ? 1.0 : 0.0;
-			return std::max(std::min(a_value, 10.0), floor);
+			return Maxss(Minss(a_value, 10.0), floor);
 		}
 		return a_value;
 	}
