@@ -651,10 +651,13 @@ namespace BM::Hooks
 			allReady = allReady && g_scalingInstalled;
 		}
 
-		logger::info("Hook sites checked, {}; cap hook {}; XP gain hook {}; Legendary menu {}; formula scaling {}",
+		logger::info(
+			"Hook sites checked, {}; cap hook {}; skill XP gain hook {}; character-XP clamp {}; Legendary menu {}; "
+			"formula scaling {}",
 			allReady ? "all ready" : "some unavailable",
 			g_capHookInstalled ? "installed" : "not installed",
 			g_xpGainHookInstalled ? "installed" : "not installed",
+			g_charXPClampInstalled ? "installed" : "not installed",
 			g_legendaryMenuInstalled ? "installed" : "not installed",
 			g_scalingInstalled ? "installed" : "not installed");
 		return allReady;
