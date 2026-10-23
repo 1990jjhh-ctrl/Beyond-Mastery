@@ -311,6 +311,75 @@ static void TestDragonSoulsPaid()
 	}
 }
 
+// Formula scaling (FR-24 ... FR-30): the remaps, the value clamp and the barter floor.
+static void TestBarterEffectiveSkill()  // fBarterMax 3.3, fBarterMin 2.0, limit sqrt(1.2)
+{
+	const BM::Curves::BarterFormula b{ 3.3, 2.0 };
+	const double                    L = std::sqrt(1.2);
+	CHECK_NEAR(b.EffectiveSkill(100.0, L), 100.0, 1e-9);
+	CHECK_NEAR(b.EffectiveSkill(150.0, L), 135.664, 0.01);
+	CHECK_NEAR(b.EffectiveSkill(200.0, L), 153.049, 0.01);
+	CHECK_NEAR(b.EffectiveSkill(1e4, L), 169.581, 0.01);
+	CHECK_NEAR((b.EffectiveSkill(100.001, L) - 100.0) / 0.001, 1.0, 0.001);  // C1 at 100
+	CHECK_NEAR(b.Vanilla(b.EffectiveSkill(1e4, L)), L, 1e-6);
+}
+static void TestBarterFinalClampFloorsRatio()
+{
+	auto p = BM::Curves::BarterFinalClamp(1.05, 0.95, 1.0, 1.0, 1.2);  // perks pushed buy down
+	CHECK_NEAR(p.buy, 1.14, 1e-9);
+	CHECK_NEAR(p.sell, 0.95, 1e-9);
+	p = BM::Curves::BarterFinalClamp(0.8, 0.9, 1.0, 1.0, 1.2);  // vanilla floor, then the ratio
+	CHECK_NEAR(p.buy, 1.08, 1e-9);
+	CHECK_NEAR(p.sell, 0.9, 1e-9);
+	p = BM::Curves::BarterFinalClamp(2.0, 0.5, 1.0, 1.0, 1.2);  // already fine: unchanged
+	CHECK_NEAR(p.buy, 2.0, 1e-9);
+	CHECK_NEAR(p.sell, 0.5, 1e-9);
+}
+static void TestClampMatchesVanillaForNPCs()
+{
+	using namespace BM::Curves;
+	CHECK_NEAR(ClampActorValue(150.0, kClampAsSkill, false), 100.0, 0);
+	CHECK_NEAR(ClampActorValue(-5.0, kClampAsSkill, false), 0.0, 0);
+	CHECK_NEAR(ClampActorValue(150.0, kClampAsSkill, true), 150.0, 0);
+	CHECK_NEAR(ClampActorValue(-5.0, kClampAsSkill, true), 0.0, 0);
+	CHECK_NEAR(ClampActorValue(12.0, kClampAsSpecialStat, false), 10.0, 0);
+	CHECK_NEAR(ClampActorValue(0.0, kClampAsSpecialStat | kSpecialStatClampsAsNonZero, false), 1.0, 0);
+	CHECK_NEAR(ClampActorValue(0.0, kClampAsSpecialStat, false), 0.0, 0);
+	CHECK_NEAR(ClampActorValue(500.0, 0, false), 500.0, 0);
+}
+static void TestSpellCostThroughIntTruncation()  // PC set: base 0.0025, scale 0.65, limit 0.25
+{
+	const BM::Curves::SpellCostFormula f{ 0.0025, 0.65 };
+	const auto                         engine = [&](double s) { return f.Vanilla(std::floor(f.EffectiveSkill(s, 0.25))); };
+	CHECK_NEAR(engine(100.0), f.Vanilla(100.0), 1e-12);
+	CHECK_NEAR(engine(400.0), 0.284, 0.01);  // criterion 8: 0.29 +- 0.01
+	for (double s = 100.0; s <= 1e5; s *= 1.5) CHECK(engine(s) >= 0.25);
+}
+static void TestEnchantChargeVanillaUpTo100()  // base 0.005, scale 0.5, limit 0.5 x value at 100
+{
+	const auto   e = BM::Curves::EnchantChargeFormula(0.005, 0.5);
+	const double L = 0.5 * e.Vanilla(100.0);
+	for (double s : { 15.0, 50.0, 99.0, 100.0 }) CHECK_NEAR(e.Factor(s, L), e.Vanilla(s), 1e-12);
+	CHECK_NEAR(e.Factor(125.0, L), 0.227, 0.001);
+	CHECK_NEAR(e.Factor(150.0, L), 0.190, 0.001);
+	CHECK_NEAR(e.Factor(200.0, L), 0.160, 0.001);
+	CHECK(e.Factor(1000.0, L) >= 0.146);  // criterion 10
+}
+static void TestRemapsFiniteAtConfigExtremes()
+{
+	const BM::Curves::SpellCostFormula f{ 0.0025, 0.65 };
+	const BM::Curves::BarterFormula    b{ 3.3, 2.0 };
+	for (double limit : { 0.0, 0.59 }) {
+		double prev = 100.0;
+		for (double s = 100.0; s <= 1e5; s *= 1.3) {
+			const double e = f.EffectiveSkill(s, limit);
+			CHECK(std::isfinite(e) && e >= 100.0 && e >= prev - 1e-9);
+			prev = e;
+		}
+	}
+	CHECK_NEAR(b.EffectiveSkill(500.0, std::sqrt(1.0)), b.InverseVanilla(1.0), 1.0);
+}
+
 int main()
 {
 	TestDragonSoulsPaid();
@@ -331,6 +400,12 @@ int main()
 	TestSpellCost();
 	TestEnchantCharge();
 	TestBarter();
+	TestBarterEffectiveSkill();
+	TestBarterFinalClampFloorsRatio();
+	TestClampMatchesVanillaForNPCs();
+	TestSpellCostThroughIntTruncation();
+	TestEnchantChargeVanillaUpTo100();
+	TestRemapsFiniteAtConfigExtremes();
 	if (g_failures == 0) {
 		std::printf("All curve tests passed.\n");
 	}

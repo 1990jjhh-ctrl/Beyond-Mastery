@@ -363,11 +363,68 @@ namespace BM::Curves
 		{
 			return { a_limit, Vanilla(kVanillaCap), -(factorMax - factorMin) / 100.0 };
 		}
+
+		// Skill level that makes the vanilla formula return a_factor.
+		[[nodiscard]] double InverseVanilla(double a_factor) const noexcept
+		{
+			return 100.0 * (factorMax - a_factor) / (factorMax - factorMin);
+		}
+
+		// Effective Speech to report to the engine so that it computes the
+		// asymptotic buy factor instead of the vanilla one.
+		[[nodiscard]] double EffectiveSkill(double a_skill, double a_limit) const noexcept
+		{
+			if (a_skill <= kVanillaCap) {
+				return a_skill;
+			}
+			return InverseVanilla(MakeAsymptote(a_limit)(a_skill));
+		}
 	};
 
 	// Final clamp (FR-26): buy price never below a_minRatio x sell price.
 	[[nodiscard]] inline double ClampBuyPrice(double a_buy, double a_sell, double a_minRatio) noexcept
 	{
 		return std::max(a_buy, a_sell * a_minRatio);
+	}
+
+	struct BarterPrices
+	{
+		double buy{ 1.0 };
+		double sell{ 1.0 };
+	};
+
+	// The engine's final barter clamp, after perks (fMinBuyMult, fMaxSellMult
+	// and 1.0), followed by the ratio floor FR-26 adds.
+	[[nodiscard]] inline BarterPrices BarterFinalClamp(double a_buy, double a_sell, double a_minBuyMult,
+		double a_maxSellMult, double a_minRatio) noexcept
+	{
+		const double buy = std::max({ a_minBuyMult, a_buy, 1.0 });
+		const double sell = std::min({ a_maxSellMult, a_sell, 1.0 });
+		return { ClampBuyPrice(buy, sell, a_minRatio), sell };
+	}
+
+	// ---------------------------------------------------------------------
+	// GetClampedActorValue (hook-points.md §5.2)
+	// ---------------------------------------------------------------------
+
+	// ActorValueInfo flags the engine's clamp reads.
+	inline constexpr std::uint32_t kSpecialStatClampsAsNonZero = 1u << 2;
+	inline constexpr std::uint32_t kClampAsSpecialStat = 1u << 3;
+	inline constexpr std::uint32_t kClampAsSkill = 1u << 4;
+
+	// The engine's clamp of an actor value by its flags: skills to [0, 100],
+	// special stats to [0 or 1, 10], anything else unchanged. With
+	// a_liftSkillCeiling -- the player's skills -- a skill is only kept >= 0,
+	// so values above 100 reach the formulas (FR-24).
+	[[nodiscard]] inline double ClampActorValue(double a_value, std::uint32_t a_flags, bool a_liftSkillCeiling) noexcept
+	{
+		if (a_flags & kClampAsSkill) {
+			return a_liftSkillCeiling ? std::max(a_value, 0.0) : std::max(std::min(a_value, kVanillaCap), 0.0);
+		}
+		if (a_flags & kClampAsSpecialStat) {
+			const double floor = (a_flags & kSpecialStatClampsAsNonZero) ? 1.0 : 0.0;
+			return std::max(std::min(a_value, 10.0), floor);
+		}
+		return a_value;
 	}
 }
