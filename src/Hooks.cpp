@@ -21,6 +21,7 @@ namespace BM::Hooks
 		bool g_xpGainHookInstalled = false;
 		bool g_legendaryMenuInstalled = false;
 		bool g_scalingInstalled = false;
+		bool g_charXPClampInstalled = false;
 
 		// REL::Module classifies a runtime by minor version: 4 = VR, 5 = SE,
 		// 6 and above = AE. So 1.7.x takes the AE path throughout -- the AE
@@ -112,6 +113,38 @@ namespace BM::Hooks
 			REL::safe_write(a_siteAddress + 5, nops.data(), nops.size());
 
 			logger::info("XP gain hook installed at {:#x} (stub {:#x})", a_siteAddress,
+				reinterpret_cast<std::uintptr_t>(stub));
+			return true;
+		}
+
+		// Character XP per skill level-up (FR-11): the new level clamped to 100
+		// before the multiply by fXPPerSkillRank, read from the setting itself.
+		bool InstallCharXPClamp(std::uintptr_t a_siteAddress)
+		{
+			auto*       settings = RE::GameSettingCollection::GetSingleton();
+			const auto* rank = settings ? settings->GetSetting("fXPPerSkillRank") : nullptr;
+			if (rank == nullptr) {
+				logger::error("fXPPerSkillRank not found; the character-XP clamp is not installed");
+				return false;
+			}
+
+			Stubs::CharXPClampStub code{ reinterpret_cast<std::uintptr_t>(&rank->data.f) };
+			code.ready();
+
+			auto& trampoline = SKSE::GetTrampoline();
+			auto* stub = trampoline.allocate(code.getSize());
+			if (stub == nullptr) {
+				logger::error("No trampoline space for the character-XP stub ({} bytes)", code.getSize());
+				return false;
+			}
+			std::memcpy(stub, code.getCode(), code.getSize());
+
+			trampoline.write_call<5>(a_siteAddress, reinterpret_cast<std::uintptr_t>(stub));
+			std::array<std::uint8_t, Stubs::kCharXPLength - 5> nops{};
+			nops.fill(REL::NOP);
+			REL::safe_write(a_siteAddress + 5, nops.data(), nops.size());
+
+			logger::info("Character-XP clamp installed at {:#x} (stub {:#x})", a_siteAddress,
 				reinterpret_cast<std::uintptr_t>(stub));
 			return true;
 		}
@@ -253,6 +286,9 @@ namespace BM::Hooks
 			}
 			if (&a_site == &HookSites::kImprovePlayerSkillPoints) {
 				return UseAE() && Config::Get().xpGainFactorPerTier < 1.0;
+			}
+			if (&a_site == &HookSites::kImproveLevelExpBySkillLevel) {
+				return UseAE() && Config::Get().clampCharXPAbove100;
 			}
 			if (&a_site == &HookSites::kLegendaryBoxA || &a_site == &HookSites::kLegendaryBoxB) {
 				return UseAE();  // AE/1.7.x only, like the cap hook it depends on
@@ -499,10 +535,15 @@ namespace BM::Hooks
 			}
 		}
 
-		if (Config::Get().clampCharXPAbove100) {
-			logger::warn(
-				"bClampCharXPAbove100 is set, but the character-XP clamp (FR-11) is not "
-				"implemented yet, so the setting currently has no effect.");
+		// Character XP clamp (FR-11). Off by default, where vanilla's unclamped
+		// formula is the requirement, so the hook is not installed at all.
+		if (!Config::Get().clampCharXPAbove100) {
+			logger::info("bClampCharXPAbove100 is off, so the character-XP clamp is not installed");
+		} else if (UseAE()) {
+			const auto charXP = CheckDetailed(HookSites::kImproveLevelExpBySkillLevel);
+			if (charXP.status == SiteStatus::kReady) {
+				g_charXPClampInstalled = InstallCharXPClamp(charXP.address);
+			}
 		}
 
 		// The Legendary menu (FR-14). Only where the cap hook is in: Upgrade
