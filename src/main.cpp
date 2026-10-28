@@ -4,9 +4,9 @@
 #include "State.h"
 #include "Stubs.h"
 
-// Milestone 1: plugin loads on SE and AE, reads the INI, persists caps in
-// the co-save and detects conflicting plugins. Engine hooks (docs/hook-points.md)
-// are added after their sites are verified in a disassembler.
+// SKSE entry point: init, the runtime gate, the INI, co-save registration, and
+// the messaging listener that installs the hooks (Hooks::InstallAll) and warns
+// once about conflicting plugins (FR-20).
 
 namespace
 {

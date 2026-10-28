@@ -13,7 +13,8 @@ source of the version):
                                               extract straight into that folder
 
 Both hold the DLL plus, in a BeyondMastery/ folder beside it, the license, the
-readme and THIRD-PARTY-NOTICES.txt: the licenses of every library the build
+player readme (docs/nexus/description.md, the Nexus page text, shipped as
+README.md) and THIRD-PARTY-NOTICES.txt: the licenses of every library the build
 pulled in, which their MIT and BSD terms require with each binary copy. No INI: the plugin writes its own on first start, and shipping one would
 overwrite the player's settings on every update.
 
@@ -88,7 +89,7 @@ def build_archives(dll: pathlib.Path, version: str, out: pathlib.Path,
     files = {
         f"{NAME}.dll": dll.read_bytes(),
         f"{NAME}/LICENSE": (root / "LICENSE").read_bytes(),
-        f"{NAME}/README.md": (root / "README.md").read_bytes(),
+        f"{NAME}/README.md": (root / "docs" / "nexus" / "description.md").read_bytes(),
         f"{NAME}/THIRD-PARTY-NOTICES.txt": notices,
     }
     out.mkdir(parents=True, exist_ok=True)

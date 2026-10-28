@@ -1,6 +1,7 @@
 #pragma once
 
-// Single source of truth for engine addresses (docs/hook-points.md).
+// Single source of truth for engine patch sites. How each was found, and the
+// evidence behind it, is in docs/hook-points.md.
 //
 // Every entry is an Address Library ID plus byte offset for SE 1.5.97 and
 // AE 1.6.x, and the instruction bytes expected at the patch site. The hook
@@ -13,7 +14,7 @@
 // "verified" is set once a site has been confirmed in our own disassembly.
 // Every site is confirmed with scripts/verify_sites.py against SkyrimSE.exe
 // 1.7.104.0: at drift 0 with its own address library, and through a
-// region-local drift with the 1.7.99 one (hook-points.md §9a). At runtime the
+// region-local drift with the 1.7.99 one (hook-points.md, "Verification record"). At runtime the
 // player's own address library supplies the exact offsets.
 //
 // The AE ids, byte offsets and patterns hold unchanged on 1.7.x, so there is
@@ -84,7 +85,7 @@ namespace BM::HookSites
 		return (a_ae ? a_site.ae.id : a_site.se.id) != 0;
 	}
 
-	// --- Skill cap and XP (hook-points.md §1-3) ----------------------------
+	// --- Skill cap and XP (hook-points.md, "Skill cap and XP") ----------------------------
 
 	// Register holding the skill at the patch point, from our disassembly of
 	// 1.7.104 (function entry 0x78dcb0, site 0x78dd1f):
@@ -111,6 +112,13 @@ namespace BM::HookSites
 		true
 	};
 
+	// The skill XP a use gives, use mult x points + use offset (AVSK +0 and +4,
+	// copied to the routine's frame; Stubs::XPGainStub). The routine's other
+	// branch, taken by caller 41562 with its flag clear, adds exactly the XP
+	// missing to the next level for whole-level grants -- trainers, skill
+	// books -- and is deliberately left unhooked so they stay exact (FR-9).
+	// Caller 40488, PlayerCharacter::AddSkillExperience, sets the flag: use and
+	// player.advskill take this branch.
 	inline constexpr Site kImprovePlayerSkillPoints{
 		"ImprovePlayerSkillPoints",
 		{ 40554, 0xDC },
@@ -130,9 +138,14 @@ namespace BM::HookSites
 		true
 	};
 
-	// --- Effective skill (hook-points.md §5.1, §5.2) -------------------------
+	// --- Effective skill (hook-points.md, "Formula scaling") -------------------------
 
-	// Whole-function hook on the player's ActorValueOwner::GetActorValue.
+	// Actor::GetActorValue, shared by the Actor, Character and PlayerCharacter
+	// ActorValueOwner vtables (207521, 207896, 208050) and never called
+	// directly. Not patched: the remap replaces slot 1 of the player's vtable
+	// (RE::VTABLE_PlayerCharacter[5]) and forwards here. The bytes are checked
+	// because a mod that detoured this function would stack its remap under
+	// ours -- a conflict, so formula scaling is then not installed.
 	inline constexpr Site kPlayerAVOGetCurrent{
 		"PlayerAVOGetCurrent",
 		{ 37517, 0 },
@@ -178,7 +191,7 @@ namespace BM::HookSites
 	// actor value by its ActorValueInfo flags -- skills to [0, 100]. Spell
 	// cost, barter Speech, Lockpicking, Pickpocket and Sneak read the skill
 	// through it, so it is replaced whole and lifts the ceiling for the
-	// player's skills only (hook-points.md §5.2). The bytes are its entry:
+	// player's skills only (hook-points.md, "Formula scaling"). The bytes are its entry:
 	// push rbx; sub rsp, 0x20; mov rax, [rcx]; movsxd rbx, edx; mov edx, ebx;
 	// call [rax+8] (GetActorValue). AE/1.7.x only.
 	inline constexpr Site kGetClampedActorValue{
@@ -200,9 +213,13 @@ namespace BM::HookSites
 	inline constexpr Site kSpellCostCallA{ "SpellCostCallA", { 0, 0 }, { 11017, 0x38 }, "", "F3 44 0F 2C C0 48 8B CB 0F 28 CE E8 ?? ?? ?? ??", true };
 	inline constexpr Site kSpellCostCallB{ "SpellCostCallB", { 0, 0 }, { 11494, 0x4C }, "", "48 8D 8B B8 00 00 00 F3 44 0F 2C C0 E8 ?? ?? ?? ??", true };
 
-	// --- Enchanting charge cost (hook-points.md §5.3, FR-30) -----------------
+	// --- Enchanting charge cost (hook-points.md, "Formula scaling", FR-30) -----------------
 
-	// Two bytes in the original pattern vary (B0 or B8); stored as "??".
+	// GetActorValue(kEnchanting) -- edx = 0x17 -- then the call to the charge
+	// per use, 26494: (1 - (skill * fEnchantingSkillCostBase) ^
+	// fEnchantingSkillCostScale) * fEnchantingSkillCostMult * cost ^
+	// fEnchantingCostExponent. This is its only caller. Two bytes in the
+	// original pattern vary (B0 or B8); stored as "??".
 	inline constexpr Site kCalculateChargePointsPerUse{
 		"CalculateChargePointsPerUse",
 		{ 50557, 0x344 },
@@ -214,10 +231,10 @@ namespace BM::HookSites
 
 	// The call to the charge-per-use function (26494), its only caller, at the
 	// end of the pattern. Max charge (soul charge through perk entry 0x4F)
-	// never reads the skill, so it needs no site (hook-points.md §5.3).
+	// never reads the skill, so it needs no site (hook-points.md, "Formula scaling").
 	inline constexpr std::uint32_t kChargeCallOffset = 31;
 
-	// --- Legendary box (hook-points.md §7.1, FR-14) --------------------------
+	// --- Legendary box (hook-points.md, "Legendary box", FR-14) --------------------------
 	//
 	// Pressing Legendary in the skill tree makes StatsMenu build a
 	// LegendarySkillResetConfirmCallback and show it through one call to
@@ -256,7 +273,7 @@ namespace BM::HookSites
 		true
 	};
 
-	// --- Barter (hook-points.md §6, FR-26) ----------------------------------
+	// --- Barter (hook-points.md, "Formula scaling", FR-26) ----------------------------------
 
 	// The barter menu's final price clamp, after perk entries 8 and 0x3C:
 	// buy = max(fMinBuyMult, buy, 1.0) at [rbp+0xA0], sell = min(fMaxSellMult,

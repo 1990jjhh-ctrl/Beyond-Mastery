@@ -21,7 +21,9 @@ namespace BM
 		static Config& Get() noexcept;
 
 		// Loads the INI; missing file or keys keep defaults. Writes back a
-		// complete file so new keys appear for the user.
+		// complete file so new keys appear for the user: a new setting goes in
+		// both the read and the write-back block of Config.cpp, with its
+		// comment string.
 		void Load();
 	};
 }

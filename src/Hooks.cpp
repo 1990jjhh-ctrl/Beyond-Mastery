@@ -43,7 +43,7 @@ namespace BM::Hooks
 		[[nodiscard]] bool SiteIsNeeded(const HookSites::Site& a_site) noexcept;
 
 		// Every site formula scaling patches or checks a call against
-		// (hook-points.md §5, §6). AE/1.7.x only.
+		// (hook-points.md, "Formula scaling"). AE/1.7.x only.
 		constexpr std::array kScalingSites{
 			&HookSites::kPlayerAVOGetCurrent,
 			&HookSites::kUpdateSkillList,

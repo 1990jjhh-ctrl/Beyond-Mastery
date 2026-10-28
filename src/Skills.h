@@ -32,7 +32,7 @@ namespace BM::Skills
 	enum class Scaling : std::uint8_t
 	{
 		kSqrt,   // form A
-		kBarter  // form B through the inverse of the barter formula (hook-points.md §6)
+		kBarter  // form B through the inverse of the barter formula (hook-points.md, "Formula scaling")
 	};
 
 	[[nodiscard]] inline Scaling ScalingOf(RE::ActorValue a_av) noexcept

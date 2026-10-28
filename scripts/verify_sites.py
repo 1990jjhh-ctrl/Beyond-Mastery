@@ -4,7 +4,7 @@
 Resolves every Address Library ID in the site table against an Address Library
 database and byte-compares the instructions the table expects against a real
 SkyrimSE.exe. This is how a site earns `verified = true` without a debugger and
-without launching the game (docs/hook-points.md section 9).
+without launching the game (docs/hook-points.md, "Verification record").
 
 Address Library databases come in three shapes, all parsed here, following
 lib/commonlibsse-ng/src/REL/IDDB.cpp:

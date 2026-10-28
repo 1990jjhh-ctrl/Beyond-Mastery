@@ -98,6 +98,14 @@ class TestArchives(unittest.TestCase):
         for path in self.archives:
             self.assertFalse(any(n.endswith(".ini") for n in self.names(path)))
 
+    def test_the_readme_is_the_player_description(self):
+        # Players get the Nexus page text, not the repository's developer README.
+        with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3.zip") as z:
+            self.assertEqual(
+                z.read("SKSE/Plugins/BeyondMastery/README.md"),
+                (ROOT / "docs" / "nexus" / "description.md").read_bytes(),
+            )
+
     def test_the_license_is_the_gpl(self):
         # GPL-3.0 requires the license text with every distributed copy.
         with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3.zip") as z:

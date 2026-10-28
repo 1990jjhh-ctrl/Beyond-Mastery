@@ -2,70 +2,11 @@
 
 SKSE plugin for Skyrim AE 1.6.x and 1.7.x: raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems. Skill effects above 100 continue sub-linearly or asymptotically.
 
+- Download: [Nexus Mods](https://www.nexusmods.com/skyrimspecialedition/mods/196536) or the [GitHub releases](https://github.com/1990jjhh-ctrl/Beyond-Mastery/releases)
 - Requirements: [PRD.md](PRD.md)
-- Engine hook design: [docs/hook-points.md](docs/hook-points.md)
-
-## Status
-
-Supported runtimes: AE 1.6.x and 1.7.x. SE 1.5.97 is out of scope for now
-(PRD §3): the plugin loads there but stays inactive.
-
-Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
-- The plugin loads, with no warnings in its log.
-- Every patch site resolves to the address `scripts/verify_sites.py` predicts
-  ([docs/hook-points.md](docs/hook-points.md) §9a).
-- Skills level normally and stop at their limit.
-- The Legendary menu: Upgrade pays with perks, dragon souls and black soul
-  gems (The Black Star included). It shows what is missing when the player
-  can't afford it, and names the level still to reach below the limit.
-- Reset Skill, re-training, and dragon-soul gates paid again on each climb.
-- Caps and gates survive save and reload.
-- The Reset Skill confirmation names the reset, the returned perks, the kept
-  cap and any dragon souls lost (FR-31).
-- The first level past a raised limit or a paid gate costs its full XP (FR-8).
-- Formula scaling above 100 (FR-24 … FR-30), described below: spell cost
-  follows the PRD curve (Destruction 100 → 200 cut a spell's cost by the
-  predicted 0.69×), Speech 1000 buys at exactly 1.2× the sell price, weapon
-  damage grows sub-linearly, enchanting keeps a cost per hit. The skills menu,
-  the crafting menus, the skill-increase notification and the level-up screen
-  all show the real level.
-- The optional character-XP clamp, `bClampCharXPAbove100` (FR-11): a skill
-  level-up above 100 gives the character XP of one at 100, checked to the
-  point through the plugin's `Character XP … (+N)` log line.
-- The optional skill XP scaling, `bScaleXPGainAbove100` (FR-9): above 100,
-  skill XP from use is multiplied by `√(100/skill)`; trainers and skill books
-  still grant exact levels.
-
-- The conflict warning (FR-20): with Experience and Custom Skills Framework
-  installed, one notification names both and reports the skipped patch sites.
-
-Implemented, but not yet verified in-game:
-- A one-time log warning if a skill's XP threshold ever passes float
-  precision, around level 3,500 (FR-10).
-
-Deferred: FR-10's double-precision XP accumulator, until a reachable level
-needs it.
-
-## Skills above 100
-
-Above 100, skills keep paying off, but less and less:
-
-- Most effects (weapon damage, armor, smithing, alchemy, enchanting
-  magnitude, block, lockpicking, pickpocket, sneak) grow with the square root
-  of the skill rather than linearly.
-- Spell cost keeps falling towards a floor: the skill's part of the cost never
-  drops below 25% (`fSpellCostLimit`).
-- Buying always costs at least 1.2× what the same item sells for
-  (`fBarterMinRatio`), after perks and Fortify Barter.
-- Enchanting charge per use falls towards half its value at 100
-  (`fEnchantChargeLimitFraction`), so enchanted weapons never become free.
-
-Only the player is affected; NPCs stay vanilla. Everything other mods or
-scripts read as the player's current skill above 100 is this *effective*
-value, not the level shown in the skills menu. A script that sets a skill
-from its own reading (`SetActorValue(x, GetActorValue(x) + 1)`) would
-therefore lower a skill above 100. `bEnableFormulaScaling=false` in
-`BeyondMastery.ini` turns all of this off.
+- What players see, as on the Nexus page: [docs/nexus/description.md](docs/nexus/description.md)
+- Building, testing and contributing: [docs/development.md](docs/development.md)
+- How the engine patch sites were found: [docs/hook-points.md](docs/hook-points.md)
 
 ## Install
 
@@ -94,10 +35,6 @@ it (a new save, or a co-save that was deleted) puts every cap back to 100 while
 those skills keep their higher levels; they simply sit above their cap and stop
 earning XP until the cap is raised past them again. No resource you already
 spent is refunded.
-
-## Development
-
-Building, testing and the architecture: [docs/development.md](docs/development.md).
 
 ## License
 
