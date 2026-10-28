@@ -36,10 +36,12 @@ Verified in-game on 1.7.104 (SKSE64 2.3.1, Proton):
   skill XP from use is multiplied by `√(100/skill)`; trainers and skill books
   still grant exact levels.
 
+- The conflict warning (FR-20): with Experience and Custom Skills Framework
+  installed, one notification names both and reports the skipped patch sites.
+
 Implemented, but not yet verified in-game:
 - A one-time log warning if a skill's XP threshold ever passes float
   precision, around level 3,500 (FR-10).
-- The conflict warning (FR-20).
 
 Deferred: FR-10's double-precision XP accumulator, until a reachable level
 needs it.
