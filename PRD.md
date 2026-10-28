@@ -190,7 +190,7 @@ Spell cost skill factor, for comparison:
 ## 7. Constraints
 
 - Requires SKSE64, Address Library for SKSE Plugins, and a CommonLibSSE-NG build covering AE 1.6.x and 1.7.x.
-- Hook locations must be resolved through Address Library IDs (no hardcoded offsets). 1.7.x reuses the AE IDs: `REL::RelocationID` selects the AE ID for every runtime at or above 1.6.317, and the AE IDs, byte offsets and instruction patterns were confirmed unchanged on 1.7.104 (docs/hook-points.md §9a).
+- Hook locations must be resolved through Address Library IDs (no hardcoded offsets). 1.7.x reuses the AE IDs: `REL::RelocationID` selects the AE ID for every runtime at or above 1.6.317, and the AE IDs, byte offsets and instruction patterns were confirmed unchanged on 1.7.104 (docs/hook-points.md, "Verification record").
 - No plugin file: the entry point is vanilla Legendary (FR-14), so the mod adds no records and takes no load-order slot.
 
 ## 8. Success criteria

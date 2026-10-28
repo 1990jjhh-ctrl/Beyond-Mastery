@@ -1,7 +1,7 @@
 #pragma once
 
-// Formula scaling above 100, for the player only (PRD §6.9, hook-points.md
-// §5 and §6).
+// Formula scaling above 100, for the player only (PRD §6.9, hook-points.md,
+// "Formula scaling").
 //
 // One remap point: slot 1 of the player's ActorValueOwner vtable returns an
 // effective skill s_eff for skills above 100, so every formula reading the
@@ -9,6 +9,11 @@
 // back to 100, so it is replaced with one that lifts the ceiling for the
 // player. The skills menu bypasses the remap while it builds its list
 // (FR-29). Hooks.cpp installs all of it; this unit holds the callees.
+//
+// Every other reader of the player's current skill -- Papyrus, perk
+// conditions, other mods -- also sees s_eff, which stays >= 100 above 100, so
+// vanilla perk requirements still pass. The engine's XP routine reads the base
+// value (vtable slot 3), so leveling never sees s_eff.
 
 namespace BM::Scaling
 {

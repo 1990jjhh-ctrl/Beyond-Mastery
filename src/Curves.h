@@ -438,7 +438,7 @@ namespace BM::Curves
 	}
 
 	// ---------------------------------------------------------------------
-	// GetClampedActorValue (hook-points.md §5.2)
+	// GetClampedActorValue (hook-points.md, "Formula scaling")
 	// ---------------------------------------------------------------------
 
 	// ActorValueInfo flags the engine's clamp reads.

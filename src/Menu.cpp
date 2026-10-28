@@ -21,7 +21,7 @@ namespace BM::Menu
 		constexpr std::int32_t kMenuDepth = 10;
 
 		// The button LegendarySkillResetConfirmCallback::Run resets on
-		// (hook-points.md §7.1: `cmp bl, 1; jne <return>`).
+		// (hook-points.md, "Legendary box": `cmp bl, 1; jne <return>`).
 		constexpr std::uint8_t kVanillaConfirm = 1;
 
 		using Callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>;
