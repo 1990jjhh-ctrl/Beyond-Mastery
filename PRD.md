@@ -1,7 +1,7 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.10 — Approved** (2026-10-23; v1.10 replaces FR-9's stepped `f^(T−1)` with the continuous slope of form A, as an on/off switch)
-Date: 2026-10-23
+Status: **v1.11 — Approved** (2026-10-28; v1.11 records the acceptance results under §8)
+Date: 2026-10-28
 Owner: Joel Hirsbrunner
 
 ---
@@ -206,6 +206,12 @@ Spell cost skill factor, for comparison:
 9. At Speech 1000 with all barter perks and Fortify Barter, buy price ≥ 1.2 × sell price for any item.
 10. At Enchanting 1000, a weapon enchantment still costs charge per hit (skill factor ≥ 0.146), and the item's number of uses is finite.
 11. Reset Skill behaves as vanilla Legendary: level 15, perks returned, a second confirmation box shown. That box names the reset level, the returned perks and the kept cap, plus the dragon souls lost when any gate was paid.
+
+**Results** (release 1.0.x on 1.7.104, SKSE64 2.3.1):
+
+- **Verified in-game:** 1, 2, 3, 4, 6, 8, 9, 10 and 11. Criterion 4 was checked to the point with the plugin's `Character XP … (+N)` log line, which appears while the clamp is on. Criterion 6 was checked on a second machine, with Experience and Custom Skills Framework installed.
+- **Unit-tested:** criterion 7, and the bounds in criteria 8 and 10 at every skill (`tests/test_curves.cpp`).
+- **Open:** criterion 5 has not been run with a 200+ plugin load order. FR-10's one-time precision warning only fires around skill level 3,500 and has not been seen.
 
 ## 9. Risks
 

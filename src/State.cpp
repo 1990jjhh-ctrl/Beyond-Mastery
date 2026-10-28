@@ -9,6 +9,8 @@ namespace BM
 		constexpr std::uint32_t kUniqueID = 'BMST';
 
 		constexpr std::uint32_t kCapsRecord = 'CAPS';
+		// A record whose layout changes gets a new version, and OnLoad keeps
+		// reading the old one: a save must never lose its caps (FR-22).
 		constexpr std::uint32_t kCapsVersion = 1;
 
 		// Separate from CAPS rather than a CAPS version 2, so saves written
