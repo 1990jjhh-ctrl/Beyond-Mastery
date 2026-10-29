@@ -668,9 +668,13 @@ namespace BM::Hooks
 			namespace Sites = CustomSkillsSites;
 			using namespace Xbyak::util;
 
+			// With no skill enabled a mismatch is benign: info, no conflict box.
+			const bool wanted = CustomSkills::AnyEnabled();
+			const auto problem = wanted ? spdlog::level::err : spdlog::level::info;
+
 			const auto module = REX::W32::GetModuleHandleW(Sites::kModule);
 			if (module == nullptr) {
-				logger::error("{} is loaded, but CustomSkills.dll is not: its skills stay at 100", Compat::kCustomSkills);
+				spdlog::log(problem, "{} is loaded, but CustomSkills.dll is not: its skills stay at 100", Compat::kCustomSkills);
 				return false;
 			}
 			const auto base = reinterpret_cast<std::uintptr_t>(module);
@@ -679,7 +683,7 @@ namespace BM::Hooks
 			bool ready = true;
 			for (const auto* function : Sites::kFunctions) {
 				if (!MatchesInImage(base, imageSize, function->rva, function->entry)) {
-					logger::error("Hook site {} at {:#x}: {} -- not Custom Skills Framework 3.2.0's", function->name,
+					spdlog::log(problem, "Hook site {} at {:#x}: {} -- not Custom Skills Framework 3.2.0's", function->name,
 						base + function->rva, StatusName(SiteStatus::kSignatureMismatch));
 					ready = false;
 				}
@@ -712,7 +716,7 @@ namespace BM::Hooks
 				if (ok) {
 					logger::info("Hook site {} resolved to {:#x}: {}", a_site.name, base + rva, StatusName(SiteStatus::kReady));
 				} else {
-					logger::error("Hook site {} at {:#x}: {} -- not patching it", a_site.name, base + rva,
+					spdlog::log(problem, "Hook site {} at {:#x}: {} -- not patching it", a_site.name, base + rva,
 						StatusName(SiteStatus::kSignatureMismatch));
 				}
 				ready = ready && ok;
@@ -724,8 +728,10 @@ namespace BM::Hooks
 			const auto useXP = scaleXP ? checkSite(Sites::kAdvanceUseXP) : 0;
 
 			if (!ready) {
-				g_signatureMismatch = true;
-				logger::error("{}'s level limit is not patched: custom skills stay at 100", Compat::kCustomSkills);
+				// The conflict box only matters once a skill is enabled; with
+				// none, CSF 3.2.0 or not, the player has asked for nothing.
+				g_signatureMismatch = g_signatureMismatch || wanted;
+				spdlog::log(problem, "{}'s level limit is not patched: custom skills stay at 100", Compat::kCustomSkills);
 				return false;
 			}
 
@@ -736,7 +742,7 @@ namespace BM::Hooks
 			// into it until the process ends.
 			auto* block = AllocateNear(base + Sites::kAdvance.rva, Stubs::kCustomSkillsTrampolineSize);
 			if (block == nullptr) {
-				logger::error("No memory for the {} stubs within reach of CustomSkills.dll: custom skills stay at 100",
+				spdlog::log(problem, "No memory for the {} stubs within reach of CustomSkills.dll: custom skills stay at 100",
 					Compat::kCustomSkills);
 				return false;
 			}
@@ -770,7 +776,7 @@ namespace BM::Hooks
 				reachable = reachable && InRel32(plans[i].address, stubs[i]);
 			}
 			if (!reachable) {
-				logger::error("No memory for the {} stubs within reach of CustomSkills.dll: custom skills stay at 100",
+				spdlog::log(problem, "No memory for the {} stubs within reach of CustomSkills.dll: custom skills stay at 100",
 					Compat::kCustomSkills);
 				return false;
 			}
@@ -909,15 +915,18 @@ namespace BM::Hooks
 			allReady = allReady && g_scalingInstalled;
 		}
 
-		// Custom Skills Framework's level limit (FR-35): only for an enabled
-		// custom skill, otherwise CSF is left untouched.
+		// Custom Skills Framework's level limit (FR-35). Installed whenever CSF
+		// is loaded, even with no skill enabled: the MCM enables skills at
+		// runtime. This is the one exception to "no hook the configuration
+		// makes a no-op"; LevelLimit returns CSF's 100 for a disabled skill.
 		if (!Compat::CustomSkillsLoaded()) {
 			logger::info("{} is not loaded, so its level limit is not patched", Compat::kCustomSkills);
-		} else if (!CustomSkills::AnyEnabled()) {
-			logger::info("No custom skill is enabled, so {}'s level limit is not patched", Compat::kCustomSkills);
 		} else {
 			g_customSkillsInstalled = InstallCustomSkills();
-			allReady = allReady && g_customSkillsInstalled;
+			allReady = allReady && (g_customSkillsInstalled || !CustomSkills::AnyEnabled());
+			if (g_customSkillsInstalled) {
+				logger::info("{}'s level limit is patched; disabled skills keep its 100", Compat::kCustomSkills);
+			}
 		}
 
 		logger::info(

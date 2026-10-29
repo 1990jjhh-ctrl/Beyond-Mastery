@@ -56,7 +56,7 @@ The mod has no ESP/ESL, so it takes no load-order slot. It's safe to add to an e
 
 **Compatible with Experience:** Experience keeps character XP and its player-level skill cap, Beyond Mastery the paid caps above 100. Both caps apply, and the lower one wins. With Experience installed, `bClampCharXPAbove100` has no effect.
 
-**Compatible with Custom Skills Framework:** its custom skills keep their own leveling, cap of 100 and Legendary, unless you opt one in. Beyond Mastery lists every custom skill in `BeyondMastery.ini`; set `bEnable = true` in its `[CustomSkill.<id>]` section and restart the game. That skill then gets Legendary's Upgrade and Reset Skill like the vanilla skills, at the same costs, and you can choose whether the perk point comes from your own perks or the skill's own pool. This works with Custom Skills Framework 3.2.0. With any other version, Beyond Mastery leaves the skill at 100, shows its conflict warning once per session, and says why in its log.
+**Compatible with Custom Skills Framework:** its custom skills keep their own leveling, cap of 100 and Legendary, unless you opt one in. Beyond Mastery lists every custom skill in `BeyondMastery.ini`; set `bEnable = true` in its `[CustomSkill.<id>]` section. That skill then gets Legendary's Upgrade and Reset Skill like the vanilla skills, at the same costs, and you can choose whether the perk point comes from your own perks or the skill's own pool. This works with Custom Skills Framework 3.2.0. With any other version, Beyond Mastery leaves the skill at 100 and says why in its log; if a skill is already enabled when the game starts, it also shows its conflict warning once per session.
 
 **Incompatible:**
 
