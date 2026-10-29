@@ -608,7 +608,9 @@ namespace BM::Hooks
 					g_signatureMismatch = true;
 				}
 			} else {
-				logger::warn("Hook site {} at {:#x}: {} -- not used by this build yet, ignoring",
+				// Nothing is written here, so a mismatch is only worth knowing
+				// about, e.g. Experience's patch in the character-XP site.
+				logger::info("Hook site {} at {:#x}: {} -- not needed with this configuration, left alone",
 					site->name, checked.address, StatusName(checked.status));
 			}
 		}
