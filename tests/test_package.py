@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Tests for scripts/package.py, which turns a built BeyondMastery.dll into the
 release archives: one laid out for Nexus and mod managers, one to extract
-straight into Data/SKSE/Plugins."""
+straight into Data/SKSE/Plugins. The first also carries the MCM plugin and
+scripts."""
 
 import importlib.util
 import pathlib
@@ -11,6 +12,7 @@ import unittest
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def _load():
@@ -63,7 +65,7 @@ class TestArchives(unittest.TestCase):
     def test_names_carry_the_version(self):
         self.assertEqual(
             sorted(p.name for p in self.archives),
-            ["BeyondMastery-1.2.3-SKSE-Plugins.zip", "BeyondMastery-1.2.3.zip"],
+            ["BeyondMastery-1.2.3-MCM.zip", "BeyondMastery-1.2.3-SKSE-Plugins.zip", "BeyondMastery-1.2.3.zip"],
         )
 
     def test_mod_manager_archive_is_rooted_at_data(self):
@@ -77,6 +79,40 @@ class TestArchives(unittest.TestCase):
             ],
         )
 
+    def test_mcm_archive_is_rooted_at_data_and_holds_only_the_menu(self):
+        # Optional: everything but the menu works without it (PRD FR-36).
+        self.assertEqual(
+            self.names(self.out / "BeyondMastery-1.2.3-MCM.zip"),
+            [
+                "BeyondMastery.esp",
+                "SKSE/Plugins/BeyondMastery/LICENSE",
+                "Scripts/BeyondMastery.pex",
+                "Scripts/BeyondMasteryMCM.pex",
+                "Source/Scripts/BeyondMastery.psc",
+                "Source/Scripts/BeyondMasteryMCM.psc",
+            ],
+        )
+
+    def test_the_plugin_is_the_generated_one(self):
+        make_esp = importlib.import_module("make_esp")
+        with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3-MCM.zip") as z:
+            self.assertEqual(z.read("BeyondMastery.esp"), make_esp.build())
+
+    def test_the_scripts_are_the_checked_in_ones(self):
+        with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3-MCM.zip") as z:
+            for name, src in (
+                ("Scripts/BeyondMasteryMCM.pex", "compiled/BeyondMasteryMCM.pex"),
+                ("Scripts/BeyondMastery.pex", "compiled/BeyondMastery.pex"),
+                ("Source/Scripts/BeyondMasteryMCM.psc", "BeyondMasteryMCM.psc"),
+                ("Source/Scripts/BeyondMastery.psc", "BeyondMastery.psc"),
+            ):
+                self.assertEqual(z.read(name), (ROOT / "papyrus" / src).read_bytes())
+
+    def test_archives_are_byte_reproducible(self):
+        again = pkg.build_archives(self.dll, "1.2.3", self.dir / "again", ROOT, b"notices")
+        for first, second in zip(self.archives, again):
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+
     def test_plugins_archive_is_rooted_at_the_plugins_folder(self):
         self.assertEqual(
             self.names(self.out / "BeyondMastery-1.2.3-SKSE-Plugins.zip"),
@@ -87,6 +123,13 @@ class TestArchives(unittest.TestCase):
                 "BeyondMastery/THIRD-PARTY-NOTICES.txt",
             ],
         )
+
+    def test_only_the_mcm_archive_has_the_menu(self):
+        # The menu needs the plugin and the scripts; they ship on their own, so
+        # a player without SkyUI never gets an ESP.
+        for archive in ("BeyondMastery-1.2.3.zip", "BeyondMastery-1.2.3-SKSE-Plugins.zip"):
+            for name in self.names(self.out / archive):
+                self.assertFalse(name.endswith((".esp", ".pex", ".psc")), (archive, name))
 
     def test_the_dll_is_shipped_unchanged(self):
         with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3.zip") as z:

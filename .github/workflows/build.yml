@@ -25,6 +25,7 @@ on:
       - "vcpkg*.json"
       - "lib/**"
       - "scripts/**"
+      - "papyrus/**"
       - "LICENSE"
       - ".github/workflows/build.yml"
   # Pushes to master fill the caches every pull request can read: GitHub only
@@ -41,6 +42,7 @@ on:
       - "vcpkg*.json"
       - "lib/**"
       - "scripts/**"
+      - "papyrus/**"
       - "LICENSE"
       - ".github/workflows/build.yml"
   workflow_dispatch:

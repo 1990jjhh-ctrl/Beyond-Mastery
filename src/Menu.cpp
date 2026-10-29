@@ -118,13 +118,13 @@ namespace BM::Menu
 		[[nodiscard]] RE::TESGlobal* PerkPool(const SkillRef& a_skill)
 		{
 			const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill);
-			return custom && (*custom)->settings.perkSource == CustomSkillsData::PerkSource::kOwn ?
+			return custom && CustomSkills::SettingsOf(**custom).perkSource == CustomSkillsData::PerkSource::kOwn ?
 			           (*custom)->perkPointsGlobal :
 			           nullptr;
 		}
 
 		void ShowMain(SkillRef a_skill, Callback a_vanilla);
-		void ShowUpgrade(SkillRef a_skill, Callback a_vanilla);
+		void ShowUpgrade(SkillRef a_skill, RE::TESGlobal* a_pool, Callback a_vanilla);
 
 		// Vanilla's second Legendary box takes its text from this game setting
 		// when Run builds it; the level it resets to is the other one.
@@ -220,9 +220,25 @@ namespace BM::Menu
 		// engine's PlayerSkills data, which CSF does not use, and CSF's own
 		// progress (its Ratio global) is left as it is -- FR-8 is not carried
 		// over to custom skills.
-		void Apply(const SkillRef& a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
+		//
+		// a_pool is the perk pool the Upgrade box showed. The MCM can change a
+		// custom skill's settings while the box is open, so they are read again
+		// here and nothing is charged if the skill was disabled or its perk
+		// source changed: the player agreed to that pool's price.
+		void Apply(const SkillRef& a_skill, RE::TESGlobal* a_pool, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
 		{
-			switch (Resources::Spend(a_upgrade.cost, a_gems, PerkPool(a_skill))) {
+			if (const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill);
+				custom && !CustomSkills::SettingsOf(**custom).enable) {
+				const auto message = std::format("{} is no longer raised above 100; open Legendary again.", SkillName(a_skill));
+				RE::SendHUDMessage::ShowHUDMessage(message.c_str());
+				return;
+			}
+			if (PerkPool(a_skill) != a_pool) {
+				const auto message = std::format("{}'s perk source changed; open Legendary again.", SkillName(a_skill));
+				RE::SendHUDMessage::ShowHUDMessage(message.c_str());
+				return;
+			}
+			switch (Resources::Spend(a_upgrade.cost, a_gems, a_pool)) {
 			case Resources::SpendResult::kSpent:
 				break;
 			case Resources::SpendResult::kNotAffordable:
@@ -249,36 +265,36 @@ namespace BM::Menu
 		// FR-7: when the player could pay either with or without The Black Star,
 		// ask. When only one way works, use it -- the Upgrade box already said
 		// whether the Star is part of the count.
-		void Confirm(SkillRef a_skill, Callback a_vanilla, Curves::Upgrade a_upgrade)
+		void Confirm(SkillRef a_skill, RE::TESGlobal* a_pool, Callback a_vanilla, Curves::Upgrade a_upgrade)
 		{
-			const auto have = Resources::Read(PerkPool(a_skill));
+			const auto have = Resources::Read(a_pool);
 			const auto needed = a_upgrade.cost.blackSoulGems;
 			const auto withStar = Curves::PlanGems(needed, have.consumableGems, have.blackStarFilled, true);
 			const auto withoutStar = Curves::PlanGems(needed, have.consumableGems, have.blackStarFilled, false);
 
 			if (withStar && withoutStar && withStar->blackStar) {
 				Show("Pay with The Black Star? Its soul is used and the Star kept.",
-					{ { "Use The Black Star", [=] { Apply(a_skill, a_upgrade, *withStar); } },
-						{ "Keep The Black Star", [=] { Apply(a_skill, a_upgrade, *withoutStar); } },
-						{ "Back", [=] { ShowUpgrade(a_skill, a_vanilla); } } });
+					{ { "Use The Black Star", [=] { Apply(a_skill, a_pool, a_upgrade, *withStar); } },
+						{ "Keep The Black Star", [=] { Apply(a_skill, a_pool, a_upgrade, *withoutStar); } },
+						{ "Back", [=] { ShowUpgrade(a_skill, a_pool, a_vanilla); } } });
 				return;
 			}
 			const auto plan = withoutStar ? withoutStar : withStar;
 			if (!plan) {
-				ShowUpgrade(a_skill, a_vanilla);  // no longer affordable: show what is missing
+				ShowUpgrade(a_skill, a_pool, a_vanilla);  // no longer affordable: show what is missing
 				return;
 			}
-			Apply(a_skill, a_upgrade, *plan);
+			Apply(a_skill, a_pool, a_upgrade, *plan);
 		}
 
 		// FR-16: the cost and the player's holdings, shown only once Upgrade is
 		// chosen. Unaffordable: name what is missing and offer only Back (FR-5).
-		void ShowUpgrade(SkillRef a_skill, Callback a_vanilla)
+		void ShowUpgrade(SkillRef a_skill, RE::TESGlobal* a_pool, Callback a_vanilla)
 		{
 			const auto [cap, gatesPaid] = CapOf(a_skill);
 			const auto limit = Curves::Limit(cap, gatesPaid);
 			const auto upgrade = Curves::UpgradeFor(cap, gatesPaid);
-			const auto have = Resources::Read(PerkPool(a_skill));
+			const auto have = Resources::Read(a_pool);
 			const auto name = SkillName(a_skill);
 
 			std::string body = upgrade.kind == Curves::UpgradeKind::kGate ?
@@ -304,7 +320,7 @@ namespace BM::Menu
 
 			std::vector<Button> buttons;
 			if (affordable) {
-				buttons.push_back({ "Confirm", [=] { Confirm(a_skill, a_vanilla, upgrade); } });
+				buttons.push_back({ "Confirm", [=] { Confirm(a_skill, a_pool, a_vanilla, upgrade); } });
 			}
 			buttons.push_back({ "Back", [=] { ShowMain(a_skill, a_vanilla); } });
 			Show(body, buttons);
@@ -317,6 +333,10 @@ namespace BM::Menu
 			const auto [cap, gatesPaid] = CapOf(a_skill);
 			const auto limit = Curves::Limit(cap, gatesPaid);
 			const auto name = SkillName(a_skill);
+			const auto pool = PerkPool(a_skill);  // resolved once; the Upgrade box carries it
+			if (pool) {
+				logger::info("Legendary for {}: perk points from its own pool, global {:08X} ({})", name, pool->GetFormID(), pool->value);
+			}
 			const bool atLimit = Curves::AtCap(BaseLevel(a_skill), limit);
 			// At the cap a raise must stay loadable; an unpaid gate can always be paid.
 			const bool raisable = limit < cap || Curves::CapRaisable(cap);
@@ -324,7 +344,7 @@ namespace BM::Menu
 			std::string         body = name;
 			std::vector<Button> buttons{ { "Reset Skill", [=] { ResetSkill(a_skill, a_vanilla); } } };
 			if (atLimit && raisable) {
-				buttons.push_back({ "Upgrade", [=] { ShowUpgrade(a_skill, a_vanilla); } });
+				buttons.push_back({ "Upgrade", [=] { ShowUpgrade(a_skill, pool, a_vanilla); } });
 			} else if (!atLimit) {
 				body = std::format("Reach {} to upgrade {}.", limit, name);
 			} else {
@@ -349,7 +369,8 @@ namespace BM::Menu
 		// pool that is missing would otherwise charge the player instead.
 		[[nodiscard]] const char* VanillaBoxReason(const CustomSkills::Skill& a_skill)
 		{
-			if (!a_skill.settings.enable) {
+			const auto settings = CustomSkills::SettingsOf(a_skill);  // one copy: a concurrent edit cannot split the checks
+			if (!settings.enable) {
 				return "it is not enabled";
 			}
 			if (!Hooks::CustomSkillLimitInstalled()) {
@@ -361,7 +382,7 @@ namespace BM::Menu
 			if (!a_skill.legendaryGlobal) {
 				return "it has no Legendary global";
 			}
-			if (a_skill.settings.perkSource == CustomSkillsData::PerkSource::kOwn && !a_skill.perkPointsGlobal) {
+			if (settings.perkSource == CustomSkillsData::PerkSource::kOwn && !a_skill.perkPointsGlobal) {
 				return "its own perk pool was not found";
 			}
 			return nullptr;

@@ -45,6 +45,14 @@ scripts/format.sh   # clang-format in place; --check only reports (also VS Code 
 
 The plugin links the C++ runtime statically. Don't switch it back to the dynamic runtime: `scripts/check_runtime_deps.py` explains why and fails the build if it happens.
 
+The MCM's Papyrus scripts in `papyrus/` are compiled locally and the `.pex` files are committed in `papyrus/compiled/`, because CI can't run the Creation Kit's compiler. After changing a `.psc`, run `scripts/papyrus.sh` and commit the result:
+
+```bash
+SKYRIM_DIR=<Skyrim SE folder> PROTON_DIR=<Proton Experimental>/files scripts/papyrus.sh
+```
+
+It needs the Creation Kit (Steam app 1946180) installed into `SKYRIM_DIR`, with its `Scripts.zip` unpacked into `Data/` (the compiler's `Data/Source/Scripts`), and Proton Experimental, whose Wine bundles the Wine Mono the compiler needs. The header comment of `scripts/papyrus.sh` has the rest.
+
 To test a build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/Plugins/` while the game is closed. The log is `Documents/My Games/Skyrim Special Edition/SKSE/BeyondMastery.log`.
 
 ## Tests
@@ -66,11 +74,13 @@ Each source file starts with a comment describing it. As a map:
 | `src/Scaling.*` | Formula scaling above 100 |
 | `src/CustomSkills.*` | Custom Skills Framework skills: discovery from CSF's JSON files, opt-in settings, level limit |
 | `src/CustomSkillsData.h`, `src/CustomSkillsSites.h` | Game-free: the per-skill INI settings, the CCAP co-save encoding; CSF 3.2.0 patch sites |
+| `src/Papyrus.*` | The native functions the MCM's scripts call |
 | `src/Menu.*`, `src/Texts.h` | The Legendary menu and its text |
 | `src/Resources.*` | Perks, dragon souls, soul gems |
 | `src/State.*` | Caps and gates in the co-save |
 | `src/Compat.*` | Plugins Beyond Mastery adapts to (Experience, Custom Skills Framework) |
 | `src/Skills.h`, `src/Config.*`, `src/main.cpp` | Skill mapping, INI settings, entry point |
+| `papyrus/` | The MCM's Papyrus sources and, in `compiled/`, the committed `.pex`; `scripts/make_esp.py` generates its ESL plugin |
 | `tests/`, `scripts/` | Tests; setup, build, packaging and verification scripts |
 | `lib/commonlibsse-ng` | CommonLibSSE-NG submodule |
 

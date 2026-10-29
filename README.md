@@ -14,12 +14,15 @@ Requires [SKSE64](https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=
 and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444).
 
 Each [release](https://github.com/1990jjhh-ctrl/Beyond-Mastery/releases) has two
-archives with the same files:
+archives with the same DLL, and one optional archive:
 
 - `BeyondMastery-<version>.zip`: install it with a mod manager (Mod Organizer 2,
   Vortex), or extract it into `Data/`.
 - `BeyondMastery-<version>-SKSE-Plugins.zip`: extract it straight into
   `Data/SKSE/Plugins/`.
+- `BeyondMastery-<version>-MCM.zip`, optional: the menu for Custom Skills
+  Framework skills. Install it like the first, and enable `BeyondMastery.esp`
+  in your plugin list; it needs SkyUI. See [PRD.md](PRD.md), FR-36.
 
 Neither contains `BeyondMastery.ini`: the plugin writes it on first start, and
 an update keeps your settings.

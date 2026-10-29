@@ -19,7 +19,9 @@ namespace BM::CustomSkills
 		RE::TESGlobal*                           levelGlobal{};
 		RE::TESGlobal*                           legendaryGlobal{};
 		RE::TESGlobal*                           perkPointsGlobal{};
-		CustomSkillsData::Settings               settings;
+		// Guarded by a lock: CSF's threads read it on every XP gain while
+		// Papyrus threads may change it. Use SettingsOf and ApplySettings.
+		CustomSkillsData::Settings settings;
 	};
 
 	// Parses Data/SKSE/Plugins/CustomSkills/*.json. A file that does not parse
@@ -52,9 +54,15 @@ namespace BM::CustomSkills
 	// for an enabled skill's level with bScaleXPGainAbove100, otherwise 1.
 	[[nodiscard]] float UseXPFactor(const RE::TESGlobal* a_level) noexcept;
 
+	// A consistent copy of a skill's settings.
+	[[nodiscard]] CustomSkillsData::Settings SettingsOf(const Skill& a_skill);
+	// Replaces a skill's settings.
+	void ApplySettings(Skill& a_skill, CustomSkillsData::Settings a_settings);
+
 	// Changes one key (bEnable, sPerkSource) of a skill's section: validates
 	// the whole section through ParseSettings, and only if it is clean
-	// updates the skill and saves the INI. False for an unknown skill or key,
-	// or a bad value.
+	// updates the skill and then saves the INI. False for an unknown skill or
+	// key, or a bad value. If the save fails the change still stands in
+	// memory (and is logged).
 	[[nodiscard]] bool SetSetting(std::string_view a_id, std::string_view a_key, std::string_view a_value);
 }
