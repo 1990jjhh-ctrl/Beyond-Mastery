@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.13 — Approved** (2026-10-29; v1.12 adds Experience compatibility, FR-32; v1.13 Custom Skills Framework, FR-33)
+Status: **v1.14 — Approved** (2026-10-29; v1.12 adds Experience compatibility, FR-32; v1.13 Custom Skills Framework, FR-33; v1.14 custom skills above 100, FR-34 and FR-35)
 Date: 2026-10-29
 Owner: Joel Hirsbrunner
 
@@ -132,7 +132,13 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 - **FR-20** On load, detect known uncappers (e.g. SKSE Skill Uncapper). If found and `bWarnOnConflict` is true, show one in-game notification and write to the log.
 - **FR-21** Write a log to the standard SKSE log directory (`BeyondMastery.log`).
 - **FR-32** Experience is supported, not a conflict. Experience keeps character XP and its player-level skill cap; Beyond Mastery keeps Legendary, the paid caps and formula scaling. Both caps apply, and the lower one wins, below and above 100. While Experience is loaded, the character-XP clamp (FR-11) is not installed, because Experience owns character XP. An INI whose `sKnownConflicts` still holds an old default that listed Experience or Custom Skills Framework is updated to the new default.
-- **FR-33** Custom Skills Framework is supported, not a conflict. Its custom skills stay entirely its own: it levels them itself, capped at 100, with its own Legendary. Beyond Mastery covers the 18 vanilla skills as without it. Formula scaling wraps CSF's GetActorValue, which forwards every vanilla skill to the engine's. Skyrim Uncapper stays a conflict (FR-20): it pursues the same goal by another route, so players choose one.
+- **FR-33** Custom Skills Framework is supported, not a conflict. Its custom skills stay entirely its own by default: it levels them itself, capped at 100, with its own Legendary. Beyond Mastery covers the 18 vanilla skills as without it, and a custom skill only changes when the player opts it in (FR-34). Formula scaling wraps CSF's GetActorValue, which forwards every vanilla skill to the engine's. Skyrim Uncapper stays a conflict (FR-20): it pursues the same goal by another route, so players choose one.
+- **FR-34** A player can opt each Custom Skills Framework skill into Beyond Mastery, so that it is raised above 100 like a vanilla skill. Beyond Mastery lists the installed custom skills at startup and keeps their settings in `BeyondMastery.ini`, one `[CustomSkill.<id>]` section per skill (`<id>` is the `id` in the skill's CSF JSON file):
+  - `bEnable` (default false): Beyond Mastery handles this skill above 100. With every skill off, nothing of CSF is touched.
+  - `sPerkSource` (`player` or `own`, default `player`): where Upgrade's perk point comes from. `own` falls back to `player` for a skill without a perk pool.
+
+  A section of a skill that is no longer installed is kept. For an enabled skill with a Legendary global, Legendary at its cap opens Beyond Mastery's Upgrade, Reset Skill and Cancel box (FR-14 to FR-17, FR-31), at vanilla's costs (FR-5 to FR-7, FR-13). FR-8 does not carry over: CSF stores no progress at a skill's cap, so there is no level to withhold. The caps and paid gates of custom skills persist in the co-save (FR-22) under the skill's id; entries of removed skill mods are kept. Skills with no Legendary global are not offered Upgrade.
+- **FR-35** CSF 3.2.0 stops every custom skill at a hard-coded level 100. For an enabled skill, Beyond Mastery replaces that limit with its per-skill cap by patching CSF's binary. CSF has no Address Library, so the patch is checked byte by byte against 3.2.0: it is all-or-nothing, writes nothing on any mismatch or when it cannot allocate its stub space, and logs why; enabled skills then stay at 100. It is not installed while no skill is enabled, so enabling a skill takes effect after a restart. With `bScaleXPGainAbove100` (FR-9), the XP a custom skill gains from use is scaled before the `kModSkillUse` perks, like a vanilla skill's.
 
 ### 6.8 Save safety
 
@@ -208,12 +214,15 @@ Spell cost skill factor, for comparison:
 9. At Speech 1000 with all barter perks and Fortify Barter, buy price ≥ 1.2 × sell price for any item.
 10. At Enchanting 1000, a weapon enchantment still costs charge per hit (skill factor ≥ 0.146), and the item's number of uses is finite.
 11. Reset Skill behaves as vanilla Legendary: level 15, perks returned, a second confirmation box shown. That box names the reset level, the returned perks and the kept cap, plus the dragon souls lost when any gate was paid.
+12. Custom skills (FR-34, FR-35), with CSF's example skill: disabled, it behaves as in FR-33. Enabled and after a restart, Legendary at 100 opens Upgrade, and after Upgrade the skill trains to 110 and stops. Reset Skill keeps the cap, and the cap survives save/load. With `bScaleXPGainAbove100`, XP gain above 100 is slower. `sPerkSource = own` spends the skill's own pool.
+13. With another CSF build, or a forced pattern miss, nothing in CSF is patched, the log says why, and enabled custom skills stay at 100.
 
 **Results** (release 1.0.x on 1.7.104, SKSE64 2.3.1):
 
 - **Verified in-game:** 1, 2, 3, 4, 6, 8, 9, 10 and 11. Criterion 4 was checked to the point with the plugin's `Character XP … (+N)` log line, which appears while the clamp is on. Criterion 6 was checked on a second machine, with Experience and Custom Skills Framework installed.
 - **Unit-tested:** criterion 7, and the bounds in criteria 8 and 10 at every skill (`tests/test_curves.cpp`).
-- **Open:** criterion 5 has not been run with a 200+ plugin load order. FR-10's one-time precision warning only fires around skill level 3,500 and has not been seen.
+- **Verified in-game with Custom Skills Framework 3.2.0** (development build of 1.1.0): FR-33, where formula scaling wraps CSF's GetActorValue and vanilla skills behave as before, and criterion 12 with CSF's example skill. XP scaling was measured at level 120: progress 0.4107 with `bScaleXPGainAbove100` against 0.4500 without, a factor of 0.9127 for the expected √(100/120) = 0.9129.
+- **Open:** criterion 13 has not been run in-game. Criterion 5 has not been run with a 200+ plugin load order. FR-10's one-time precision warning only fires around skill level 3,500 and has not been seen.
 
 ## 9. Risks
 
