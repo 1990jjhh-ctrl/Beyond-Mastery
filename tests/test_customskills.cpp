@@ -6,6 +6,9 @@
 #include "CustomSkillsData.h"
 
 #include <cstdio>
+#include <map>
+#include <span>
+#include <string>
 
 using namespace BM::CustomSkillsData;
 
@@ -96,8 +99,42 @@ static void TestUniqueNames()
 	CHECK(UniqueNames({ "X", "Y" }).size() == 2);
 }
 
+static void TestCapsCodec()
+{
+	const std::map<std::string, CustomCap> caps{ { "lolligagging", { 110, 1 } }, { "gone_mod_skill", { 300, 3 } } };
+	const auto                             bytes = EncodeCaps(caps);
+	// u32 count, then per entry u16 length, id, u16 cap, u8 gates
+	CHECK(bytes.size() == 4 + (2 + 12 + 3) + (2 + 14 + 3));
+	CHECK(std::to_integer<int>(bytes[0]) == 2 && std::to_integer<int>(bytes[1]) == 0);
+	const auto back = DecodeCaps(bytes);
+	CHECK(back && *back == caps);  // the removed mod's entry survives
+
+	CHECK(DecodeCaps(EncodeCaps({}))->empty());
+	for (std::size_t n = 0; n < bytes.size(); ++n) {
+		CHECK(!DecodeCaps(std::span(bytes).first(n)));
+	}
+	auto trailing = bytes;
+	trailing.push_back(std::byte{ 0 });
+	CHECK(!DecodeCaps(trailing));
+
+	CHECK(!DecodeCaps(EncodeCaps({ { "x", { 105, 0 } } })));
+	CHECK(!DecodeCaps(EncodeCaps({ { "x", { 90, 0 } } })));
+	CHECK((CustomCap{}.cap == 100 && CustomCap{}.gatesPaid == 0));
+}
+
+static void TestCapsRecordLength()
+{
+	CHECK(IsPlausibleCapsRecordLength(0));
+	CHECK(IsPlausibleCapsRecordLength(4));
+	CHECK(IsPlausibleCapsRecordLength(kMaxCapsRecordLength));
+	CHECK(!IsPlausibleCapsRecordLength(kMaxCapsRecordLength + 1));
+	CHECK(!IsPlausibleCapsRecordLength(0xFFFFFFFF));  // a garbage header
+}
+
 int main()
 {
+	TestCapsCodec();
+	TestCapsRecordLength();
 	TestUniqueNames();
 	TestFormRef();
 	TestParseSettings();

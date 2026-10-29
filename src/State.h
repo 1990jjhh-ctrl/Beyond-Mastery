@@ -1,7 +1,11 @@
 #pragma once
 
 #include "Curves.h"
+#include "CustomSkillsData.h"
 #include "Skills.h"
+
+#include <map>
+#include <mutex>
 
 // Per-save state: each skill's cap and the gates paid during its current
 // climb (PRD FR-1, FR-13, FR-22). Persisted in the SKSE co-save; missing data
@@ -51,10 +55,39 @@ namespace BM
 		// (FR-12, FR-13).
 		void ClearGates(std::size_t a_skill) noexcept { _gatesPaid[a_skill] = 0; }
 
-		void Reset() noexcept
+		// Custom skills are keyed by their CSF id. An id never seen is at the
+		// default; entries of uninstalled mods are kept untouched.
+		//
+		// CSF asks for a custom skill's limit (CustomSkills::LevelLimit) on
+		// whatever thread advances the skill, while the main thread upgrades,
+		// loads, reverts and saves, so every access to the map takes
+		// _customMutex. The vanilla arrays need none: only the main thread
+		// touches them.
+		[[nodiscard]] CustomSkillsData::CustomCap CustomCapOf(std::string_view a_id) const
+		{
+			const std::string     key(a_id);
+			const std::lock_guard lock(_customMutex);
+			const auto            it = _customCaps.find(key);
+			return it == _customCaps.end() ? CustomSkillsData::CustomCap{} : it->second;
+		}
+		void SetCustomCap(std::string_view a_id, CustomSkillsData::CustomCap a_cap)
+		{
+			std::string           key(a_id);
+			const std::lock_guard lock(_customMutex);
+			_customCaps.insert_or_assign(std::move(key), a_cap);
+		}
+		[[nodiscard]] std::uint16_t CustomLimitOf(std::string_view a_id) const
+		{
+			const auto c = CustomCapOf(a_id);
+			return Curves::Limit(c.cap, c.gatesPaid);
+		}
+
+		void Reset()
 		{
 			_caps.fill(kDefaultCap);
 			_gatesPaid.fill(0);
+			const std::lock_guard lock(_customMutex);
+			_customCaps.clear();
 		}
 
 		// Registers save/load/revert callbacks with the SKSE serialization interface.
@@ -69,5 +102,8 @@ namespace BM
 
 		std::array<std::uint16_t, Skills::kCount> _caps{};
 		std::array<std::uint8_t, Skills::kCount>  _gatesPaid{};
+
+		mutable std::mutex                                 _customMutex;
+		std::map<std::string, CustomSkillsData::CustomCap> _customCaps;
 	};
 }

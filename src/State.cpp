@@ -17,6 +17,10 @@ namespace BM
 		// before gates recurred still load their caps untouched.
 		constexpr std::uint32_t kGatesRecord = 'GATE';
 		constexpr std::uint32_t kGatesVersion = 1;
+
+		// Custom Skills Framework skills, by id (see CustomSkillsData::EncodeCaps).
+		constexpr std::uint32_t kCustomCapsRecord = 'CCAP';
+		constexpr std::uint32_t kCustomCapsVersion = 1;
 	}
 
 	State& State::Get() noexcept
@@ -42,6 +46,18 @@ namespace BM
 		}
 		if (!a_intfc->WriteRecord(kGatesRecord, kGatesVersion, state._gatesPaid)) {
 			logger::error("Failed to write GATE record");
+		}
+		std::vector<std::byte> bytes;
+		{
+			const std::lock_guard lock(state._customMutex);
+			if (!state._customCaps.empty()) {
+				bytes = CustomSkillsData::EncodeCaps(state._customCaps);
+			}
+		}
+		if (!bytes.empty()) {
+			if (!a_intfc->WriteRecord(kCustomCapsRecord, kCustomCapsVersion, bytes.data(), static_cast<std::uint32_t>(bytes.size()))) {
+				logger::error("Failed to write CCAP record");
+			}
 		}
 	}
 
@@ -85,6 +101,26 @@ namespace BM
 					continue;
 				}
 				gatesLoaded = true;
+			} else if (type == kCustomCapsRecord) {
+				if (version != kCustomCapsVersion) {
+					logger::error("CCAP record version {} unsupported, custom skill caps reset to 100", version);
+					continue;
+				}
+				if (!CustomSkillsData::IsPlausibleCapsRecordLength(length)) {
+					logger::error("CCAP record damaged, custom skill caps reset to 100");
+					continue;
+				}
+				std::vector<std::byte> bytes(length);
+				if (a_intfc->ReadRecordData(bytes.data(), length) != length) {
+					logger::error("CCAP record truncated, custom skill caps reset to 100");
+					continue;
+				}
+				if (auto caps = CustomSkillsData::DecodeCaps(bytes)) {
+					const std::lock_guard lock(state._customMutex);
+					state._customCaps = std::move(*caps);
+				} else {
+					logger::error("CCAP record damaged, custom skill caps reset to 100");
+				}
 			} else {
 				logger::warn("Unknown co-save record {:08X}, skipped", type);
 			}

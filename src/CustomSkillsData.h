@@ -5,13 +5,19 @@
 // validated. No game or CommonLib dependencies, so this header is unit-tested
 // natively on Linux (tests/test_customskills.cpp).
 
+#include "Curves.h"
+
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
+#include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -135,6 +141,106 @@ namespace BM::CustomSkillsData
 		}
 		std::set<std::string> out;
 		std::ranges::set_difference(seen, repeated, std::inserter(out, out.end()));
+		return out;
+	}
+
+	// A custom skill's cap and the gates paid in its current climb, kept in the
+	// co-save under the skill's CSF id (PRD FR-1, FR-13).
+	struct CustomCap
+	{
+		std::uint16_t cap{ 100 };
+		std::uint8_t  gatesPaid{ 0 };
+
+		friend bool operator==(const CustomCap&, const CustomCap&) = default;
+	};
+
+	// The 'CCAP' record, little-endian: u32 count, then per entry u16 id
+	// length, the id bytes, u16 cap, u8 gates. Entries stay even when their
+	// mod is gone, so uninstalling and reinstalling it loses nothing. An id
+	// over 65535 bytes cannot be written and is skipped.
+	[[nodiscard]] inline std::vector<std::byte> EncodeCaps(const std::map<std::string, CustomCap>& a_caps)
+	{
+		constexpr std::size_t kMaxId = std::numeric_limits<std::uint16_t>::max();
+
+		std::vector<std::byte> out;
+		const auto             put = [&out](std::uint64_t a_value, int a_bytes) {
+			for (int i = 0; i < a_bytes; ++i) {
+				out.push_back(static_cast<std::byte>((a_value >> (8 * i)) & 0xFF));
+			}
+		};
+
+		std::uint32_t count = 0;
+		for (const auto& [id, cap] : a_caps) {
+			count += id.size() <= kMaxId ? 1 : 0;
+		}
+		put(count, 4);
+		for (const auto& [id, cap] : a_caps) {
+			if (id.size() > kMaxId) {
+				continue;
+			}
+			put(id.size(), 2);
+			for (const char c : id) {
+				out.push_back(static_cast<std::byte>(c));
+			}
+			put(cap.cap, 2);
+			put(cap.gatesPaid, 1);
+		}
+		return out;
+	}
+
+	// The largest 'CCAP' record that is read. The loader allocates the length
+	// from the record header before reading it, so a damaged header could
+	// otherwise ask for gigabytes and terminate the game inside SKSE's load
+	// callback (FR-22). 1 MiB holds thousands of skills.
+	inline constexpr std::uint32_t kMaxCapsRecordLength = 1u << 20;
+
+	[[nodiscard]] constexpr bool IsPlausibleCapsRecordLength(std::uint32_t a_length) noexcept
+	{
+		return a_length <= kMaxCapsRecordLength;
+	}
+
+	// nullopt for a truncated or oversized buffer, or a cap that is not
+	// Curves::IsPlausibleCap: damaged data, not a cap.
+	[[nodiscard]] inline std::optional<std::map<std::string, CustomCap>> DecodeCaps(std::span<const std::byte> a_bytes)
+	{
+		std::size_t pos = 0;
+		const auto  get = [&](int a_count) -> std::optional<std::uint32_t> {
+			if (a_bytes.size() - pos < static_cast<std::size_t>(a_count)) {
+				return std::nullopt;
+			}
+			std::uint32_t value = 0;
+			for (int i = 0; i < a_count; ++i) {
+				value |= std::to_integer<std::uint32_t>(a_bytes[pos + i]) << (8 * i);
+			}
+			pos += a_count;
+			return value;
+		};
+
+		const auto count = get(4);
+		if (!count) {
+			return std::nullopt;
+		}
+		std::map<std::string, CustomCap> out;
+		for (std::uint32_t n = 0; n < *count; ++n) {
+			const auto len = get(2);
+			if (!len || a_bytes.size() - pos < *len) {
+				return std::nullopt;
+			}
+			std::string id;
+			for (std::uint32_t i = 0; i < *len; ++i) {
+				id.push_back(static_cast<char>(a_bytes[pos + i]));
+			}
+			pos += *len;
+			const auto cap = get(2);
+			const auto gates = get(1);
+			if (!cap || !gates || !Curves::IsPlausibleCap(static_cast<std::uint16_t>(*cap))) {
+				return std::nullopt;
+			}
+			out[id] = CustomCap{ static_cast<std::uint16_t>(*cap), static_cast<std::uint8_t>(*gates) };
+		}
+		if (pos != a_bytes.size()) {
+			return std::nullopt;
+		}
 		return out;
 	}
 }
