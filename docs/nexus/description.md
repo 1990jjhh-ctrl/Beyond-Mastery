@@ -69,4 +69,7 @@ The menu for Custom Skills Framework skills (see below) is a small plugin, `Beyo
 - **The SKSE team** for SKSE64, and **meh321** for Address Library.
 - **Ryan-rsm-McKenzie, powerof3, alandtse** and everyone behind **CommonLibSSE-NG**, which Beyond Mastery is built on.
 - **The authors of Skyrim AE Uncapper**, whose research into where the engine keeps its skill caps was the starting point. No code from it is used.
+- **Parapets** for **Custom Skills Framework**, whose open source showed where its skills level up. No code from it is used.
+- **Kojak747** for **Experience**, which Beyond Mastery is compatible with.
+- **schlangster and the SkyUI team**, whose MCM framework the menu is built on.
 - The open-source libraries inside the DLL are listed with their licenses in `THIRD-PARTY-NOTICES.txt`, next to this readme.
