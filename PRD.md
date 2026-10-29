@@ -210,7 +210,7 @@ Spell cost skill factor, for comparison:
 
 **Results** (release 1.0.x on 1.7.104, SKSE64 2.3.1):
 
-- **Verified in-game:** 1, 2, 3, 4, 6, 8, 9, 10 and 11. Criterion 4 was checked to the point with the plugin's `Character XP … (+N)` log line, which appears while the clamp is on. Criterion 6 was checked on a second machine, with Experience and Custom Skills Framework installed.
+- **Verified in-game:** 1, 2, 3, 4, 6, 8, 9, 10 and 11. Criterion 4 was checked to the point with the plugin's `Character XP … (+N)` log line, which appears while the clamp is on. Criterion 6 was checked on a second machine, with Experience and Custom Skills Framework installed. FR-32 was checked in-game with Experience 3.7.4: no conflict warning, Experience's cap below 100, Legendary, Upgrade and Reset Skill with its skills menu, and the lower cap above 100.
 - **Unit-tested:** criterion 7, and the bounds in criteria 8 and 10 at every skill (`tests/test_curves.cpp`).
 - **Open:** criterion 5 has not been run with a 200+ plugin load order. FR-10's one-time precision warning only fires around skill level 3,500 and has not been seen.
 
