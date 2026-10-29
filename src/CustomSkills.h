@@ -39,6 +39,15 @@ namespace BM::CustomSkills
 	// Whether any skill is opted in and CSF is there to serve it.
 	[[nodiscard]] bool AnyEnabled() noexcept;
 
+	// Callee of the CSF level-limit stubs (Stubs::LevelLimitStub, FR-35): the
+	// limit of the enabled skill whose level global is a_level, otherwise
+	// vanilla CSF's 100. Called by CSF on every XP gain; never throws.
+	[[nodiscard]] std::int32_t LevelLimit(const RE::TESGlobal* a_level) noexcept;
+
+	// Callee of the CSF use-XP stub (Stubs::UseXPFactorStub): the FR-9 factor
+	// for an enabled skill's level with bScaleXPGainAbove100, otherwise 1.
+	[[nodiscard]] float UseXPFactor(const RE::TESGlobal* a_level) noexcept;
+
 	// Changes one key (bEnable, sPerkSource) of a skill's section: validates
 	// the whole section through ParseSettings, and only if it is clean
 	// updates the skill and saves the INI. False for an unknown skill or key,

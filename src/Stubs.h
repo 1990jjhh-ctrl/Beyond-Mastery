@@ -17,10 +17,13 @@
 // the stub. kStubFrameAdjust is that 8 + R; use it for every operand that
 // belongs to the engine's frame.
 
+#include "CustomSkillsSites.h"
+
 #include <xbyak/xbyak.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 
 namespace BM::Stubs
 {
@@ -157,6 +160,119 @@ namespace BM::Stubs
 			ret();
 			L(hundred);
 			dd(0x42C80000);  // 100.0f
+		}
+	};
+
+	// --- Custom Skills Framework's level limit (FR-35) ------------------------
+	//
+	// CSF 3.2.0 compares a custom skill's level with a hard-coded 100 at four
+	// sites (CustomSkillsSites.h). Each is replaced by a 5-byte jmp to a
+	// LevelLimitStub, which asks the callee for the skill's limit, redoes the
+	// replaced instructions against it and jumps back to whichever original
+	// target applies.
+	//
+	// The stubs live in their own trampoline near CustomSkills.dll (a rel32
+	// cannot reach SKSE's, which sits near SkyrimSE.exe), and the sites jump
+	// to them directly, so they need no thunks. The five stubs take 593 bytes
+	// (tests/test_stubs.cpp checks they fit).
+	inline constexpr std::size_t kCustomSkillsTrampolineSize = 1024;
+
+	// What the replaced instructions did with the limit.
+	enum class LimitExit
+	{
+		kBranchIfReached,  // cmp level, 100; jge a_branch
+		kBranchIfBelow,    // cmp level, 100; jl  a_branch
+		kRemaining,        // mov eax, 100; sub eax, level (flags dead)
+	};
+
+	// The frame below the seven pushed registers: 0x20 of shadow space, then
+	// xmm0-xmm5 at kLimitSpill, and 8 of slack. The sites are reached by a jmp
+	// from a body with rsp 16-aligned, and 7 * 8 + 0x88 = 0xC0, so the call is
+	// made with rsp 16-aligned too.
+	inline constexpr std::uint8_t kLimitFrame = 0x88;
+	inline constexpr std::uint8_t kLimitSpill = 0x20;
+
+	struct LevelLimitStub : Xbyak::CodeGenerator
+	{
+		// a_callee: std::int32_t(const RE::TESGlobal* a_level). a_this and
+		// a_level must be callee-saved registers, so they survive the call.
+		// a_next is the instruction after the site; a_branch the jcc's target.
+		LevelLimitStub(std::uintptr_t a_callee, const Xbyak::Reg64& a_this, const Xbyak::Reg32& a_level,
+			LimitExit a_exit, std::uintptr_t a_branch, std::uintptr_t a_next)
+		{
+			// Every volatile register is saved, not only those live at the site
+			// (rdx at the Increment sites): the cost is a few bytes, and no
+			// site can then depend on the liveness analysis being right.
+			const Xbyak::Reg64 saved[]{ rax, rcx, rdx, r8, r9, r10, r11 };
+			for (const auto& reg : saved) {
+				push(reg);
+			}
+			sub(rsp, kLimitFrame);
+			for (int i = 0; i < 6; ++i) {
+				movaps(ptr[rsp + kLimitSpill + 16 * i], Xbyak::Xmm(i));
+			}
+
+			mov(rcx, ptr[a_this + CustomSkillsSites::kLevelMember]);  // arg 0: this->Level
+			mov(rax, a_callee);
+			call(rax);  // eax: the limit
+
+			// Compare before the restores: none of them (movaps, lea, pop)
+			// touches the flags, so the jcc below still sees this compare.
+			if (a_exit == LimitExit::kRemaining) {
+				sub(eax, a_level);
+				mov(ptr[rsp + kLimitFrame + 6 * 8], rax);  // over rax's saved copy
+			} else {
+				cmp(a_level, eax);
+			}
+
+			for (int i = 0; i < 6; ++i) {
+				movaps(Xbyak::Xmm(i), ptr[rsp + kLimitSpill + 16 * i]);
+			}
+			lea(rsp, ptr[rsp + kLimitFrame]);
+			for (auto it = std::rbegin(saved); it != std::rend(saved); ++it) {
+				pop(*it);
+			}
+
+			Xbyak::Label next, branch, toBranch;
+			if (a_exit == LimitExit::kBranchIfReached) {
+				jge(toBranch);
+			} else if (a_exit == LimitExit::kBranchIfBelow) {
+				jl(toBranch);
+			}
+			jmp(ptr[rip + next]);
+			if (a_exit != LimitExit::kRemaining) {
+				L(toBranch);
+				jmp(ptr[rip + branch]);
+			}
+			L(next);
+			dq(a_next);
+			if (a_exit != LimitExit::kRemaining) {
+				L(branch);
+				dq(a_branch);
+			}
+		}
+	};
+
+	// Replaces Skill::Advance's `call fmaf`, reached only for skill use, with
+	// the same call followed by the XP factor: xmm0 = fmaf(...) * factor. The
+	// result in xmm0 is the only volatile value live after the site, and the
+	// call it replaces already clobbers the rest.
+	struct UseXPFactorStub : Xbyak::CodeGenerator
+	{
+		// a_callee: float(const RE::TESGlobal* a_level). a_fmaf: the replaced
+		// call's target. a_this: callee-saved register holding `this`.
+		UseXPFactorStub(std::uintptr_t a_callee, std::uintptr_t a_fmaf, const Xbyak::Reg64& a_this)
+		{
+			sub(rsp, kStubReserve);
+			mov(rax, a_fmaf);
+			call(rax);  // xmm0 = magnitude * use mult + use offset
+			movss(ptr[rsp + kSpillSlot], xmm0);
+			mov(rcx, ptr[a_this + CustomSkillsSites::kLevelMember]);  // arg 0: this->Level
+			mov(rax, a_callee);
+			call(rax);  // xmm0: the factor
+			mulss(xmm0, ptr[rsp + kSpillSlot]);
+			add(rsp, kStubReserve);
+			ret();
 		}
 	};
 }

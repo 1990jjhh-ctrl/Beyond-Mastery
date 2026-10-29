@@ -1,5 +1,7 @@
 #include "Compat.h"
 
+#include "CustomSkillsSites.h"
+
 namespace BM::Compat
 {
 	namespace
@@ -37,7 +39,7 @@ namespace BM::Compat
 		if (!g_customSkillsLoaded) {
 			return false;
 		}
-		const auto                         module = REX::W32::GetModuleHandleW(L"CustomSkills.dll");
+		const auto                         module = REX::W32::GetModuleHandleW(CustomSkillsSites::kModule);
 		REX::W32::MEMORY_BASIC_INFORMATION info{};
 		return module && REX::W32::VirtualQuery(reinterpret_cast<const void*>(a_address), &info, sizeof(info)) != 0 &&
 		       info.allocationBase == module;

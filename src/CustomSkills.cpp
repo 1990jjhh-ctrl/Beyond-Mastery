@@ -2,6 +2,8 @@
 
 #include "Compat.h"
 #include "Config.h"
+#include "Curves.h"
+#include "State.h"
 
 #include <nlohmann/json.hpp>
 
@@ -177,6 +179,26 @@ namespace BM::CustomSkills
 	bool AnyEnabled() noexcept
 	{
 		return g_active && std::ranges::any_of(g_skills, [](const Skill& s) { return s.settings.enable && s.levelGlobal; });
+	}
+
+	std::int32_t LevelLimit(const RE::TESGlobal* a_level) noexcept
+	{
+		constexpr std::int32_t kVanilla = State::kDefaultCap;  // CSF's own limit
+		try {
+			const auto skill = FindByLevelGlobal(a_level);
+			return skill && skill->settings.enable ? State::Get().CustomLimitOf(skill->id) : kVanilla;
+		} catch (...) {
+			return kVanilla;  // CustomLimitOf builds a std::string key
+		}
+	}
+
+	float UseXPFactor(const RE::TESGlobal* a_level) noexcept
+	{
+		const auto skill = FindByLevelGlobal(a_level);
+		if (!skill || !skill->settings.enable || !Config::Get().scaleXPGainAbove100) {
+			return 1.0f;
+		}
+		return static_cast<float>(Curves::XPGainMultiplier(a_level->value));
 	}
 
 	bool SetSetting(std::string_view a_id, std::string_view a_key, std::string_view a_value)
