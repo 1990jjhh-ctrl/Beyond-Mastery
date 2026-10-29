@@ -60,10 +60,12 @@ namespace BM
 		clampCharXPAbove100 = ini.GetBoolValue("General", "bClampCharXPAbove100", clampCharXPAbove100);
 		warnOnConflict = ini.GetBoolValue("General", "bWarnOnConflict", warnOnConflict);
 		knownConflicts = SplitList(ini.GetValue("General", "sKnownConflicts", JoinList(knownConflicts).c_str()));
-		// Up to 1.0.2 the default listed Experience, which is now supported
-		// (FR-32). Only that untouched default is updated; an edited list is the
-		// player's own.
-		if (knownConflicts == std::vector<std::string>{ "SkyrimUncapper", "Experience", "CustomSkills" }) {
+		// Earlier defaults listed Experience and Custom Skills Framework, which
+		// are now supported (FR-32, FR-33). Only an untouched old default is
+		// updated; an edited list is the player's own.
+		using List = std::vector<std::string>;
+		if (knownConflicts == List{ "SkyrimUncapper", "Experience", "CustomSkills" } ||
+			knownConflicts == List{ "SkyrimUncapper", "CustomSkills" }) {
 			knownConflicts = Config{}.knownConflicts;
 		}
 

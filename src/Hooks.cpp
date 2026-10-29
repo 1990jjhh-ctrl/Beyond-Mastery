@@ -415,12 +415,16 @@ namespace BM::Hooks
 		[[nodiscard]] bool InstallScaling()
 		{
 			// The player's ActorValueOwner vtable, slot 1 (GetActorValue), must
-			// still hold the engine's shared function; anything else means
-			// another mod got there first.
+			// still hold the engine's shared function, or Custom Skills
+			// Framework's, which forwards every vanilla skill to it (FR-33);
+			// anything else means another mod got there first.
 			REL::Relocation<std::uintptr_t>        vtable{ RE::VTABLE_PlayerCharacter[5] };
 			static REL::Relocation<std::uintptr_t> getActorValue{ RELOCATION_ID(37517, 38462) };
 			const auto                             slot = *reinterpret_cast<const std::uintptr_t*>(vtable.address() + sizeof(void*));
-			if (slot != getActorValue.address()) {
+			if (Compat::IsInCustomSkills(slot)) {
+				logger::info("The player's GetActorValue slot holds {}'s function; formula scaling wraps it (FR-33)",
+					Compat::kCustomSkills);
+			} else if (slot != getActorValue.address()) {
 				logger::error(
 					"The player's GetActorValue slot no longer holds the engine's function -- another mod "
 					"replaced it and needs a compatibility patch. Not installing formula scaling.");
