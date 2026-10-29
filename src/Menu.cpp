@@ -118,7 +118,7 @@ namespace BM::Menu
 		[[nodiscard]] RE::TESGlobal* PerkPool(const SkillRef& a_skill)
 		{
 			const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill);
-			return custom && (*custom)->settings.perkSource == CustomSkillsData::PerkSource::kOwn ?
+			return custom && CustomSkills::SettingsOf(**custom).perkSource == CustomSkillsData::PerkSource::kOwn ?
 			           (*custom)->perkPointsGlobal :
 			           nullptr;
 		}
@@ -349,7 +349,8 @@ namespace BM::Menu
 		// pool that is missing would otherwise charge the player instead.
 		[[nodiscard]] const char* VanillaBoxReason(const CustomSkills::Skill& a_skill)
 		{
-			if (!a_skill.settings.enable) {
+			const auto settings = CustomSkills::SettingsOf(a_skill);  // one copy: a concurrent edit cannot split the checks
+			if (!settings.enable) {
 				return "it is not enabled";
 			}
 			if (!Hooks::CustomSkillLimitInstalled()) {
@@ -361,7 +362,7 @@ namespace BM::Menu
 			if (!a_skill.legendaryGlobal) {
 				return "it has no Legendary global";
 			}
-			if (a_skill.settings.perkSource == CustomSkillsData::PerkSource::kOwn && !a_skill.perkPointsGlobal) {
+			if (settings.perkSource == CustomSkillsData::PerkSource::kOwn && !a_skill.perkPointsGlobal) {
 				return "its own perk pool was not found";
 			}
 			return nullptr;

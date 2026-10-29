@@ -58,10 +58,10 @@ namespace BM
 		}
 
 		// Complete section: every key, with its comment.
-		void WriteSection(CSimpleIniA& a_ini, const CustomSkills::Skill& a_skill, const RawSettings& a_raw)
+		void WriteSection(CSimpleIniA& a_ini, const CustomSkills::Skill& a_skill, const CustomSkillsData::Settings& a_settings, const RawSettings& a_raw)
 		{
 			const auto  section = SectionName(a_skill.id);
-			const auto& s = a_skill.settings;
+			const auto& s = a_settings;
 			const auto  set = [&](const char* a_key, const std::string& a_value, const char* a_comment) {
 				a_ini.SetValue(section.c_str(), a_key, a_value.c_str(), a_comment);
 			};
@@ -73,17 +73,18 @@ namespace BM
 
 		// a_lenient: a bad value falls back to its default and is logged (the
 		// file as the player left it). Otherwise any warning rejects the lot.
-		bool Parse(CustomSkills::Skill& a_skill, const RawSettings& a_raw, bool a_lenient)
+		// Returns the settings rather than storing them: they are changed only
+		// through CustomSkills::ApplySettings, under its lock.
+		std::optional<CustomSkillsData::Settings> Parse(const CustomSkills::Skill& a_skill, const RawSettings& a_raw, bool a_lenient)
 		{
 			auto parsed = ParseSettings(a_raw, a_skill.perkPoints.has_value());
 			if (!a_lenient && !parsed.warnings.empty()) {
-				return false;
+				return std::nullopt;
 			}
 			for (const auto& w : parsed.warnings) {
 				logger::warn("Custom skill {}: {}", a_skill.id, w);
 			}
-			a_skill.settings = std::move(parsed.settings);
-			return true;
+			return std::move(parsed.settings);
 		}
 	}
 
@@ -131,7 +132,7 @@ namespace BM
 		CustomSkills::Discover();
 		for (const auto& found : CustomSkills::All()) {
 			const auto skill = CustomSkills::FindById(found.id);
-			Parse(*skill, ReadRaw(ini, SectionName(found.id)), true);
+			CustomSkills::ApplySettings(*skill, *Parse(*skill, ReadRaw(ini, SectionName(found.id)), true));
 		}
 
 		// Write back a complete, commented file.
@@ -154,7 +155,7 @@ namespace BM
 
 		for (const auto& skill : CustomSkills::All()) {
 			const auto raw = ReadRaw(ini, SectionName(skill.id));
-			WriteSection(ini, skill, raw);
+			WriteSection(ini, skill, CustomSkills::SettingsOf(skill), raw);
 		}
 
 		if (ini.SaveFile(kPath) < 0) {
@@ -165,7 +166,8 @@ namespace BM
 			scaleXPGainAbove100, clampCharXPAbove100, warnOnConflict, enableFormulaScaling, spellCostLimit, barterMinRatio, enchantChargeLimitFraction);
 	}
 
-	bool Config::SetCustomSkillValue(CustomSkills::Skill& a_skill, std::string_view a_key, std::string_view a_value)
+	bool Config::SetCustomSkillValue(const CustomSkills::Skill& a_skill, std::string_view a_key, std::string_view a_value,
+		const std::function<void(CustomSkillsData::Settings)>& a_apply)
 	{
 		static constexpr std::array keys{ "bEnable"sv, "sPerkSource"sv };
 		if (std::ranges::find(keys, a_key) == keys.end()) {
@@ -180,13 +182,13 @@ namespace BM
 		const auto section = SectionName(a_skill.id);
 		ini.SetValue(section.c_str(), std::string(a_key).c_str(), std::string(a_value).c_str());
 		const auto raw = ReadRaw(ini, section);
-		auto       candidate = a_skill;
-		if (!Parse(candidate, raw, false)) {
+		auto       settings = Parse(a_skill, raw, false);
+		if (!settings) {
 			logger::warn("Custom skill {}: {} \"{}\" rejected", a_skill.id, a_key, a_value);
 			return false;
 		}
-		a_skill.settings = std::move(candidate.settings);
-		WriteSection(ini, a_skill, raw);
+		WriteSection(ini, a_skill, *settings, raw);
+		a_apply(std::move(*settings));  // memory first, and under the caller's lock only; the file write below is slow
 		if (ini.SaveFile(kPath) < 0) {
 			logger::warn("Could not write {}", kPath);
 		}

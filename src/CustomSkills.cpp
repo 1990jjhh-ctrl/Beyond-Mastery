@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <mutex>
 
 namespace BM::CustomSkills
 {
@@ -18,6 +19,19 @@ namespace BM::CustomSkills
 
 		std::vector<Skill> g_skills;
 		bool               g_active = false;  // CSF is loaded and Resolve ran
+		// Guards every Skill::settings. Never held while writing the INI or
+		// logging. Does not guard the rest of g_skills, which is built before
+		// the hooks are installed and not changed afterwards.
+		std::mutex g_settingsLock;
+		// Serializes SetSetting's INI read-modify-write with its memory update, so
+		// concurrent calls cannot lose an edit or leave memory and file out of step.
+		std::mutex g_writeLock;
+
+		// Whether the skill is opted in (the settings are copied under the lock).
+		bool IsEnabled(const Skill& a_skill)
+		{
+			return SettingsOf(a_skill).enable;
+		}
 
 		std::optional<CustomSkillsData::FormRef> FormField(const nlohmann::json& a_object, const char* a_key)
 		{
@@ -193,7 +207,26 @@ namespace BM::CustomSkills
 
 	bool AnyEnabled() noexcept
 	{
-		return g_active && std::ranges::any_of(g_skills, [](const Skill& s) { return s.settings.enable && s.levelGlobal; });
+		if (!g_active) {
+			return false;
+		}
+		try {
+			return std::ranges::any_of(g_skills, [](const Skill& s) { return s.levelGlobal && IsEnabled(s); });
+		} catch (...) {
+			return false;  // locking a mutex can throw
+		}
+	}
+
+	CustomSkillsData::Settings SettingsOf(const Skill& a_skill)
+	{
+		const std::lock_guard lock(g_settingsLock);
+		return a_skill.settings;
+	}
+
+	void ApplySettings(Skill& a_skill, CustomSkillsData::Settings a_settings)
+	{
+		const std::lock_guard lock(g_settingsLock);
+		a_skill.settings = std::move(a_settings);
 	}
 
 	std::int32_t LevelLimit(const RE::TESGlobal* a_level) noexcept
@@ -217,7 +250,7 @@ namespace BM::CustomSkills
 					logger::info("Custom skill {} below 100: its {} paid gate(s) are owed again", skill->id, cleared);
 				}
 			}
-			return skill->settings.enable ? state.CustomLimitOf(skill->id) : kVanilla;
+			return IsEnabled(*skill) ? state.CustomLimitOf(skill->id) : kVanilla;
 		} catch (...) {
 			return kVanilla;  // State builds a std::string key and locks a mutex, both of which can throw
 		}
@@ -225,16 +258,25 @@ namespace BM::CustomSkills
 
 	float UseXPFactor(const RE::TESGlobal* a_level) noexcept
 	{
-		const auto skill = FindByLevelGlobal(a_level);
-		if (!skill || !skill->settings.enable || !Config::Get().scaleXPGainAbove100) {
-			return 1.0f;
+		try {
+			const auto skill = FindByLevelGlobal(a_level);
+			if (!skill || !IsEnabled(*skill) || !Config::Get().scaleXPGainAbove100) {
+				return 1.0f;
+			}
+			return static_cast<float>(Curves::XPGainMultiplier(a_level->value));
+		} catch (...) {
+			return 1.0f;  // locking a mutex can throw
 		}
-		return static_cast<float>(Curves::XPGainMultiplier(a_level->value));
 	}
 
 	bool SetSetting(std::string_view a_id, std::string_view a_key, std::string_view a_value)
 	{
-		const auto skill = FindById(a_id);
-		return skill && Config::Get().SetCustomSkillValue(*skill, a_key, a_value);
+		const std::lock_guard write(g_writeLock);  // not g_settingsLock: that one is never held during file I/O
+		const auto            skill = FindById(a_id);
+		const bool            set = skill && Config::Get().SetCustomSkillValue(*skill, a_key, a_value, [&](CustomSkillsData::Settings a_settings) {
+			ApplySettings(*skill, std::move(a_settings));
+		});
+		logger::info("MCM: {} {} = {}{}", skill ? skill->id : std::string(a_id), a_key, a_value, set ? "" : " (rejected)");
+		return set;
 	}
 }
