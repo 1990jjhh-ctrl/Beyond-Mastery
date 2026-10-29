@@ -10,7 +10,7 @@ namespace BM
 		bool                     scaleXPGainAbove100{ false };  // FR-9
 		bool                     clampCharXPAbove100{ false };  // FR-11
 		bool                     warnOnConflict{ true };        // FR-20
-		std::vector<std::string> knownConflicts{ "SkyrimUncapper", "Experience", "CustomSkills" };
+		std::vector<std::string> knownConflicts{ "SkyrimUncapper", "CustomSkills" };
 
 		// [Scaling] (FR-28)
 		bool   enableFormulaScaling{ true };

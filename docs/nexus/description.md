@@ -54,9 +54,11 @@ The mod has no ESP/ESL, so it takes no load-order slot. It's safe to add to an e
 - [SKSE64](https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files)
 - [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
 
+**Compatible with Experience:** Experience keeps character XP and its player-level skill cap, Beyond Mastery the paid caps above 100. Both caps apply, and the lower one wins. With Experience installed, `bClampCharXPAbove100` has no effect.
+
 **Incompatible:**
 
-- **Other skill uncappers** such as Skyrim Uncapper, Experience and Custom Skills Framework. Beyond Mastery detects them and shows a warning once per session.
+- **Other skill uncappers** such as Skyrim Uncapper and Custom Skills Framework. Beyond Mastery detects them and shows a warning once per session.
 - **Mods that change Legendary or the skill-cap code** need a compatibility patch. If Beyond Mastery finds such a change, it leaves that part vanilla, and its log (`Documents/My Games/Skyrim Special Edition/SKSE/BeyondMastery.log`) names the conflict.
 
 # Shout outs

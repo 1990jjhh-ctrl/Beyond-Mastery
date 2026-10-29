@@ -48,6 +48,8 @@ set(SOURCES
 	src/Hooks.cpp
 	src/Config.h
 	src/Config.cpp
+	src/Compat.h
+	src/Compat.cpp
 	src/State.h
 	src/State.cpp
 	src/Resources.h

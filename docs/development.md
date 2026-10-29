@@ -67,6 +67,7 @@ Each source file starts with a comment describing it. As a map:
 | `src/Menu.*`, `src/Texts.h` | The Legendary menu and its text |
 | `src/Resources.*` | Perks, dragon souls, soul gems |
 | `src/State.*` | Caps and gates in the co-save |
+| `src/Compat.*` | Plugins Beyond Mastery adapts to (Experience) |
 | `src/Skills.h`, `src/Config.*`, `src/main.cpp` | Skill mapping, INI settings, entry point |
 | `tests/`, `scripts/` | Tests; setup, build, packaging and verification scripts |
 | `lib/commonlibsse-ng` | CommonLibSSE-NG submodule |

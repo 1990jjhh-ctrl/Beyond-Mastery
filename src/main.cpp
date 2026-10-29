@@ -1,3 +1,4 @@
+#include "Compat.h"
 #include "Config.h"
 #include "HookSites.h"
 #include "Hooks.h"
@@ -72,6 +73,7 @@ namespace
 		switch (a_msg->type) {
 		case SKSE::MessagingInterface::kPostLoad:
 			DetectConflicts();
+			BM::Compat::Detect(*g_skse);
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			// Check the sites first so NotifyConflicts can fold a signature

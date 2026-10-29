@@ -1,5 +1,6 @@
 #include "Hooks.h"
 
+#include "Compat.h"
 #include "Config.h"
 #include "Curves.h"
 #include "Menu.h"
@@ -345,7 +346,7 @@ namespace BM::Hooks
 				return UseAE() && Config::Get().scaleXPGainAbove100;
 			}
 			if (&a_site == &HookSites::kImproveLevelExpBySkillLevel) {
-				return UseAE() && Config::Get().clampCharXPAbove100;
+				return UseAE() && Config::Get().clampCharXPAbove100 && !Compat::ExperienceLoaded();
 			}
 			if (&a_site == &HookSites::kLegendaryBoxA || &a_site == &HookSites::kLegendaryBoxB) {
 				return UseAE();  // AE/1.7.x only, like the cap hook it depends on
@@ -607,7 +608,9 @@ namespace BM::Hooks
 					g_signatureMismatch = true;
 				}
 			} else {
-				logger::warn("Hook site {} at {:#x}: {} -- not used by this build yet, ignoring",
+				// Nothing is written here, so a mismatch is only worth knowing
+				// about, e.g. Experience's patch in the character-XP site.
+				logger::info("Hook site {} at {:#x}: {} -- not needed with this configuration, left alone",
 					site->name, checked.address, StatusName(checked.status));
 			}
 		}
@@ -647,6 +650,9 @@ namespace BM::Hooks
 		// formula is the requirement, so the hook is not installed at all.
 		if (!Config::Get().clampCharXPAbove100) {
 			logger::info("bClampCharXPAbove100 is off, so the character-XP clamp is not installed");
+		} else if (Compat::ExperienceLoaded()) {
+			// Experience owns character XP and patches inside this site.
+			logger::info("{} is loaded, so the character-XP clamp is not installed (FR-32)", Compat::kExperience);
 		} else if (UseAE()) {
 			const auto charXP = CheckDetailed(HookSites::kImproveLevelExpBySkillLevel);
 			if (charXP.status == SiteStatus::kReady) {
