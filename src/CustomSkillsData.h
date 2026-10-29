@@ -92,6 +92,22 @@ namespace BM::CustomSkillsData
 		return FormRef{ std::string(a_text.substr(0, bar)), value };
 	}
 
+	// Whether two skill ids name the same skill. Papyrus strings are
+	// case-insensitive and the game keeps each one in the case it saw first, so
+	// an id can come back from the MCM as "Lolligagging" when CSF's display name
+	// was interned before it.
+	[[nodiscard]] constexpr bool SameId(std::string_view a_lhs, std::string_view a_rhs) noexcept
+	{
+		constexpr auto lower = [](char a_c) { return a_c >= 'A' && a_c <= 'Z' ? static_cast<char>(a_c - 'A' + 'a') : a_c; };
+		return std::ranges::equal(a_lhs, a_rhs, {}, lower, lower);
+	}
+
+	// The keys of a skill's section the MCM may change; anything else is refused.
+	[[nodiscard]] constexpr bool IsMcmKey(std::string_view a_key) noexcept
+	{
+		return a_key == "bEnable" || a_key == "sPerkSource";
+	}
+
 	// Validates the raw INI values. A bad value falls back to its default and
 	// adds a warning for the log; an empty one is simply unset. a_hasOwnPool:
 	// whether the skill has a pool of its own, which "own" needs.

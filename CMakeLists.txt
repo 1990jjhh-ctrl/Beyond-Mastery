@@ -58,6 +58,8 @@ set(SOURCES
 	src/State.cpp
 	src/Resources.h
 	src/Resources.cpp
+	src/Papyrus.h
+	src/Papyrus.cpp
 	src/Menu.h
 	src/Menu.cpp
 	src/Scaling.h

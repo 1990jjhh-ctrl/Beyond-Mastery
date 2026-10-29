@@ -3,6 +3,7 @@
 #include "CustomSkills.h"
 #include "HookSites.h"
 #include "Hooks.h"
+#include "Papyrus.h"
 #include "State.h"
 #include "Stubs.h"
 
@@ -121,6 +122,12 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 
 	BM::Config::Get().Load();
 	BM::State::RegisterSerialization();
+
+	if (SKSE::GetPapyrusInterface()->Register(BM::Papyrus::Register)) {
+		logger::info("Registered the Papyrus natives of the BeyondMastery script");
+	} else {
+		logger::error("Could not register the Papyrus natives; the MCM will not work");
+	}
 
 	if (!SKSE::GetMessagingInterface()->RegisterListener(OnMessage)) {
 		logger::critical("Could not register messaging listener");

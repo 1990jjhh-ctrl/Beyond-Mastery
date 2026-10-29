@@ -148,8 +148,32 @@ static void TestCapsRecordLength()
 	CHECK(!IsPlausibleCapsRecordLength(0xFFFFFFFF));  // a garbage header
 }
 
+static void TestIsMcmKey()
+{
+	CHECK(IsMcmKey("bEnable"));
+	CHECK(IsMcmKey("sPerkSource"));
+	CHECK(!IsMcmKey("benable"));  // exact match, case included
+	CHECK(!IsMcmKey("bEnable "));
+	CHECK(!IsMcmKey("sPerkSourc"));
+	CHECK(!IsMcmKey("bScaleXPGainAbove100"));
+	CHECK(!IsMcmKey(""));
+}
+
+static void TestSameId()
+{
+	CHECK(SameId("lolligagging", "lolligagging"));
+	CHECK(SameId("lolligagging", "Lolligagging"));  // Papyrus may hand back either case
+	CHECK(SameId("Unarmed_Skill", "UNARMED_SKILL"));
+	CHECK(!SameId("lolligagging", "lolligaggin"));
+	CHECK(!SameId("lolligagging", "lolligagging "));
+	CHECK(!SameId("a", ""));
+	CHECK(SameId("", ""));
+}
+
 int main()
 {
+	TestSameId();
+	TestIsMcmKey();
 	TestCapsCodec();
 	TestCapsRecordLength();
 	TestUniqueIndex();

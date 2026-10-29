@@ -178,7 +178,7 @@ namespace BM::CustomSkills
 
 	Skill* FindById(std::string_view a_id) noexcept
 	{
-		const auto it = std::ranges::find(g_skills, a_id, &Skill::id);
+		const auto it = std::ranges::find_if(g_skills, [&](const Skill& a_skill) { return CustomSkillsData::SameId(a_skill.id, a_id); });
 		return it != g_skills.end() ? &*it : nullptr;
 	}
 
