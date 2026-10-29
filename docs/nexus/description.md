@@ -11,9 +11,10 @@ Source code (GPL-3.0-or-later): https://github.com/1990jjhh-ctrl/Beyond-Mastery
 1. Install the requirements below.
 2. Install `BeyondMastery-<version>.zip` with your mod manager (Mod Organizer 2, Vortex).
    For a manual install, extract that archive into `Data/`, or extract `BeyondMastery-<version>-SKSE-Plugins.zip` straight into `Data/SKSE/Plugins/`.
-3. Start the game once. The mod creates `Data/SKSE/Plugins/BeyondMastery.ini` with all settings and their descriptions. Updates keep your settings.
+3. Optional: for the menu, also install `BeyondMastery-<version>-MCM.zip` (under Optional files) the same way, and enable `BeyondMastery.esp` in your plugin list. It needs SkyUI.
+4. Start the game once. The mod creates `Data/SKSE/Plugins/BeyondMastery.ini` with all settings and their descriptions. Updates keep your settings.
 
-The mod has no ESP/ESL, so it takes no load-order slot. It's safe to add to an existing save.
+The menu for Custom Skills Framework skills (see below) is a small plugin, `BeyondMastery.esp`, in the optional MCM archive. It is an ESL, so it takes no load-order slot, and it needs [SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604); without it, without SkyUI, or with the plugin disabled, everything else works and only the menu is missing. It's safe to add to an existing save.
 
 **Uninstalling:** skills above 100 keep the level they reached, but stop progressing. Nothing you spent is refunded. Your raised caps stay in saves made with the mod; a save made without it drops them.
 
@@ -56,7 +57,7 @@ The mod has no ESP/ESL, so it takes no load-order slot. It's safe to add to an e
 
 **Compatible with Experience:** Experience keeps character XP and its player-level skill cap, Beyond Mastery the paid caps above 100. Both caps apply, and the lower one wins. With Experience installed, `bClampCharXPAbove100` has no effect.
 
-**Compatible with Custom Skills Framework:** its custom skills keep their own leveling, cap of 100 and Legendary, unless you opt one in. Beyond Mastery lists every custom skill in `BeyondMastery.ini`; set `bEnable = true` in its `[CustomSkill.<id>]` section. That skill then gets Legendary's Upgrade and Reset Skill like the vanilla skills, at the same costs, and you can choose whether the perk point comes from your own perks or the skill's own pool. This works with Custom Skills Framework 3.2.0. With any other version, Beyond Mastery leaves the skill at 100 and says why in its log; if a skill is already enabled when the game starts, it also shows its conflict warning once per session.
+**Compatible with Custom Skills Framework:** its custom skills keep their own leveling, cap of 100 and Legendary, unless you opt one in. Beyond Mastery lists every custom skill in `BeyondMastery.ini`; set `bEnable = true` in its `[CustomSkill.<id>]` section, or switch it on in the "Custom Skills" page of the mod configuration menu (SkyUI), which takes effect at once without a restart. That skill then gets Legendary's Upgrade and Reset Skill like the vanilla skills, at the same costs, and you can choose whether the perk point comes from your own perks or the skill's own pool. This works with Custom Skills Framework 3.2.0. With any other version, Beyond Mastery leaves the skill at 100 and says why in its log; if a skill is already enabled when the game starts, it also shows its conflict warning once per session.
 
 **Incompatible:**
 

@@ -1,6 +1,6 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.14 — Approved** (2026-10-29; v1.12 adds Experience compatibility, FR-32; v1.13 Custom Skills Framework, FR-33; v1.14 custom skills above 100, FR-34 and FR-35)
+Status: **v1.15 — Approved** (2026-10-29; v1.12 adds Experience compatibility, FR-32; v1.13 Custom Skills Framework, FR-33; v1.14 custom skills above 100, FR-34 and FR-35; v1.15 the custom skills MCM, FR-36)
 Date: 2026-10-29
 Owner: Joel Hirsbrunner
 
@@ -28,7 +28,7 @@ Skill effects above 100 must keep rewarding the player but never run away: every
 ## 4. Target users & platform
 
 - PC players on Skyrim **AE 1.6.x** and **1.7.x**, using SKSE64 and Address Library. SE 1.5.97 is out of scope (§3).
-- A single DLL via **CommonLibSSE-NG**. No plugin file (ESP/ESL): the entry point is vanilla Legendary (FR-14).
+- A single DLL via **CommonLibSSE-NG**. The entry point is vanilla Legendary (FR-14), so the core needs no plugin file; only the optional custom skills MCM has one (FR-36).
 
 ## 5. Definitions
 
@@ -126,6 +126,8 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
   - `bClampCharXPAbove100` (bool, default false)
   - `bWarnOnConflict` (bool, default true)
 
+  The optional MCM (FR-36) also edits this file.
+
 ### 6.7 Compatibility
 
 - **FR-19** Standalone: the plugin installs its own cap and XP hooks.
@@ -139,6 +141,7 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 
   A section of a skill that is no longer installed is kept. For an enabled skill with a Legendary global, Legendary at its cap opens Beyond Mastery's Upgrade, Reset Skill and Cancel box (FR-14 to FR-17, FR-31), at vanilla's costs (FR-5 to FR-7, FR-13). FR-8 does not carry over: CSF stores no progress at a skill's cap, so there is no level to withhold. The caps and paid gates of custom skills persist in the co-save (FR-22) under the skill's id; entries of removed skill mods are kept. Skills with no Legendary global are not offered Upgrade.
 - **FR-35** CSF 3.2.0 stops every custom skill at a hard-coded level 100. For an enabled skill, Beyond Mastery replaces that limit with its per-skill cap by patching CSF's binary. CSF has no Address Library, so the patch is checked byte by byte against 3.2.0: it is all-or-nothing, writes nothing on any mismatch or when it cannot allocate its stub space, and logs why; enabled skills then stay at 100. It is installed whenever CSF 3.2.0 matches, even with no skill enabled (a disabled skill keeps CSF's 100), so enabling or disabling a skill takes effect immediately. With another CSF version the conflict warning is shown only if a skill is enabled at startup; a skill enabled later keeps CSF's own limit of 100, and the log says why. With `bScaleXPGainAbove100` (FR-9), the XP a custom skill gains from use is scaled before the `kModSkillUse` perks, like a vanilla skill's.
+- **FR-36** An optional SkyUI MCM page, "Custom Skills", edits the settings of FR-34. It has one section per installed custom skill, with a toggle "Raise above 100" (`bEnable`) and a menu "Perk points from" (`sPerkSource`). A change takes effect immediately (FR-35) and is written to `BeyondMastery.ini`, the same file and the same validation as editing it by hand (FR-18). The MCM is optional: the DLL and the INI work without SkyUI, and without the plugin enabled everything except the menu works. Its plugin is an ESL, so it takes no load-order slot, and it ships with its scripts as a separate, optional release archive.
 
 ### 6.8 Save safety
 
@@ -199,7 +202,7 @@ Spell cost skill factor, for comparison:
 
 - Requires SKSE64, Address Library for SKSE Plugins, and a CommonLibSSE-NG build covering AE 1.6.x and 1.7.x.
 - Hook locations must be resolved through Address Library IDs (no hardcoded offsets). 1.7.x reuses the AE IDs: `REL::RelocationID` selects the AE ID for every runtime at or above 1.6.317, and the AE IDs, byte offsets and instruction patterns were confirmed unchanged on 1.7.104 (docs/hook-points.md, "Verification record").
-- No plugin file: the entry point is vanilla Legendary (FR-14), so the mod adds no records and takes no load-order slot.
+- The core adds no records: the entry point is vanilla Legendary (FR-14). Only the optional MCM (FR-36) has a plugin file, an ESL that takes no load-order slot.
 
 ## 8. Success criteria
 
@@ -216,13 +219,14 @@ Spell cost skill factor, for comparison:
 11. Reset Skill behaves as vanilla Legendary: level 15, perks returned, a second confirmation box shown. That box names the reset level, the returned perks and the kept cap, plus the dragon souls lost when any gate was paid.
 12. Custom skills (FR-34, FR-35), with CSF's example skill: disabled, it behaves as in FR-33. Enabled (immediately, no restart), Legendary at 100 opens Upgrade, and after Upgrade the skill trains to 110 and stops. Reset Skill keeps the cap, and the cap survives save/load. With `bScaleXPGainAbove100`, XP gain above 100 is slower. `sPerkSource = own` spends the skill's own pool.
 13. With another CSF build, or a forced pattern miss, nothing in CSF is patched, the log says why, and enabled custom skills stay at 100.
+14. The custom skills MCM (FR-36), with SkyUI and CSF installed: the page lists a section per installed custom skill; the toggles persist in `BeyondMastery.ini` and survive a restart; enabling a skill lifts its limit without a restart; without SkyUI, or with the plugin disabled, the game and the INI work as before.
 
 **Results** (release 1.0.x on 1.7.104, SKSE64 2.3.1):
 
 - **Verified in-game:** 1, 2, 3, 4, 6, 8, 9, 10 and 11. Criterion 4 was checked to the point with the plugin's `Character XP … (+N)` log line, which appears while the clamp is on. Criterion 6 was checked on a second machine, with Experience and Custom Skills Framework installed. FR-32 was checked in-game with Experience 3.7.4: no conflict warning, Experience's cap below 100, Legendary, Upgrade and Reset Skill with its skills menu, and the lower cap above 100.
 - **Unit-tested:** criterion 7, and the bounds in criteria 8 and 10 at every skill (`tests/test_curves.cpp`).
-- **Verified in-game with Custom Skills Framework 3.2.0** (development build of 1.1.0): FR-33, where formula scaling wraps CSF's GetActorValue and vanilla skills behave as before, and criterion 12 with CSF's example skill, except enabling without a restart. XP scaling was measured at level 120: progress 0.4107 with `bScaleXPGainAbove100` against 0.4500 without, a factor of 0.9127 for the expected √(100/120) = 0.9129.
-- **Open:** criterion 13, and enabling a custom skill without a restart (criterion 12), have not been run in-game. Criterion 5 has not been run with a 200+ plugin load order. FR-10's one-time precision warning only fires around skill level 3,500 and has not been seen.
+- **Verified in-game with Custom Skills Framework 3.2.0** (development build of 1.1.0): FR-33, where formula scaling wraps CSF's GetActorValue and vanilla skills behave as before, criterion 12 with CSF's example skill, and criterion 14: the MCM shows the skill, reads and writes `BeyondMastery.ini`, and enabling or disabling it takes effect without a restart. XP scaling was measured at level 120: progress 0.4107 with `bScaleXPGainAbove100` against 0.4500 without, a factor of 0.9127 for the expected √(100/120) = 0.9129.
+- **Open:** criterion 13 has not been run in-game. Criterion 5 has not been run with a 200+ plugin load order. FR-10's one-time precision warning only fires around skill level 3,500 and has not been seen.
 
 ## 9. Risks
 
