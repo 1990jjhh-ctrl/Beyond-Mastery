@@ -21,7 +21,8 @@ Everything was established against `SkyrimSE.exe` 1.7.104 (AE ids); SE 1.5.97 is
 
 - **Cap:** the XP routine (41561) compares the skill's *base* value (`call [rax+0x18]`, vtable slot 3) against the constant at `0x141b5bf14`, which reads exactly 100.0. Replacing that load with the skill's limit is the whole cap mechanic (FR-1 … FR-4, FR-13). The same constant is shared with the engine's skill clamp, which is why the constant is not patched in place.
 - **The cap at the limit:** when a level-up reaches the limit, the engine sets `levelThreshold` to 0 and stops (`0x14078df1f`), and at the limit the routine adds no XP. `player.advskill` still accumulates `xp`. Upgrade therefore restores the threshold and zeroes `xp` (FR-8).
-- **Other uncappers** (the Rust uncapper, Experience) patch the same cap site, overwriting at least 14 bytes. The same site is a hard conflict, and the byte check sees it (FR-20).
+- **Other uncappers** (the Rust uncapper) patch the same cap site, overwriting at least 14 bytes. The same site is a hard conflict, and the byte check sees it (FR-20).
+- **Experience 3.7.4** (from its AE DLL and PDB) does not touch the cap site. It replaces the two calls into the XP routine (40488+0x25, 41562+0x98) with a wrapper that skips the call while the skill's base value is at or above `fSkillCapBase + level × fSkillCapMult` (plus racial bonuses, no limit at 100). Both caps therefore apply, the lower one first (FR-32). It also writes inside the character-XP clamp site (41561+0x2CF), so that clamp stays out while Experience is loaded, and it sets the skills menu's progress value to −100 for a capped skill (52525+0x104).
 - **Legendary** needs no extra hook for the cap: the cap lives in the co-save, and Legendary only resets the level (FR-12).
 
 ## Formula scaling

@@ -1,7 +1,7 @@
 # Beyond Mastery — Product Requirements Document
 
-Status: **v1.11 — Approved** (2026-10-28; v1.11 records the acceptance results under §8)
-Date: 2026-10-28
+Status: **v1.12 — Approved** (2026-10-29; v1.12 adds Experience compatibility, FR-32)
+Date: 2026-10-29
 Owner: Joel Hirsbrunner
 
 ---
@@ -129,8 +129,9 @@ shouts are unlocked; dragons respawn, so the cost never locks a player out.
 ### 6.7 Compatibility
 
 - **FR-19** Standalone: the plugin installs its own cap and XP hooks.
-- **FR-20** On load, detect known uncappers (e.g. SKSE Skill Uncapper, Experience). If found and `bWarnOnConflict` is true, show one in-game notification and write to the log.
+- **FR-20** On load, detect known uncappers (e.g. SKSE Skill Uncapper). If found and `bWarnOnConflict` is true, show one in-game notification and write to the log.
 - **FR-21** Write a log to the standard SKSE log directory (`BeyondMastery.log`).
+- **FR-32** Experience is supported, not a conflict. Experience keeps character XP and its player-level skill cap; Beyond Mastery keeps Legendary, the paid caps and formula scaling. Both caps apply, and the lower one wins, below and above 100. While Experience is loaded, the character-XP clamp (FR-11) is not installed, because Experience owns character XP. An INI whose `sKnownConflicts` still holds the old default that listed Experience is updated to the new default.
 
 ### 6.8 Save safety
 
