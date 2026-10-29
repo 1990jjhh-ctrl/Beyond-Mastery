@@ -57,6 +57,10 @@ namespace BM::Hooks
 	// True once both Legendary box call sites route to Menu::OpenLegendary.
 	[[nodiscard]] bool LegendaryMenuInstalled() noexcept;
 
+	// True once Custom Skills Framework's level limit asks
+	// CustomSkills::LevelLimit (FR-35), so a raised custom cap is enforced.
+	[[nodiscard]] bool CustomSkillLimitInstalled() noexcept;
+
 	// True once formula scaling (the remap, the clamp and the skills-menu
 	// calls) is installed (FR-24 ... FR-29).
 	[[nodiscard]] bool ScalingInstalled() noexcept;

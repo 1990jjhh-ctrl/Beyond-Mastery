@@ -13,6 +13,7 @@ namespace BM::CustomSkills
 	struct Skill
 	{
 		std::string                              id, name, file;  // file: name within CustomSkills/
+		std::string                              displayName;     // name, translated as CSF shows it (set by Resolve)
 		CustomSkillsData::FormRef                level;
 		std::optional<CustomSkillsData::FormRef> legendary, perkPoints;  // perkPoints: the file's group pool
 		RE::TESGlobal*                           levelGlobal{};
@@ -34,14 +35,17 @@ namespace BM::CustomSkills
 	[[nodiscard]] const std::vector<Skill>& All() noexcept;
 	[[nodiscard]] Skill*                    FindById(std::string_view a_id) noexcept;
 	[[nodiscard]] Skill*                    FindByLevelGlobal(const RE::TESGlobal* a_global) noexcept;
-	// nullptr if no skill has the name, or if more than one does.
+	// The skill whose displayName is a_name, i.e. the GetFullName of its
+	// ActorValueInfo. nullptr if no skill has the name, or if more than one
+	// does: a shared name cannot pick one of them.
 	[[nodiscard]] Skill* FindByName(std::string_view a_name) noexcept;
 	// Whether any skill is opted in and CSF is there to serve it.
 	[[nodiscard]] bool AnyEnabled() noexcept;
 
 	// Callee of the CSF level-limit stubs (Stubs::LevelLimitStub, FR-35): the
 	// limit of the enabled skill whose level global is a_level, otherwise
-	// vanilla CSF's 100. Called by CSF on every XP gain; never throws.
+	// vanilla CSF's 100. Called by CSF on every XP gain; never throws. Also
+	// clears the skill's gates once its level is seen below 100 (FR-13).
 	[[nodiscard]] std::int32_t LevelLimit(const RE::TESGlobal* a_level) noexcept;
 
 	// Callee of the CSF use-XP stub (Stubs::UseXPFactorStub): the FR-9 factor

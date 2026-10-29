@@ -12,11 +12,9 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <limits>
 #include <map>
 #include <optional>
-#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -129,19 +127,30 @@ namespace BM::CustomSkillsData
 		return "CustomSkill." + std::string(a_id);
 	}
 
-	// The names that exactly one skill has. A name shared by several skills
-	// cannot pick one of them, so it is left out.
-	[[nodiscard]] inline std::set<std::string> UniqueNames(const std::vector<std::string>& a_names)
+	// The position of the one entry of a_names equal to a_name; nullopt when
+	// none is, or when several are and so none can be picked.
+	[[nodiscard]] inline std::optional<std::size_t> UniqueIndex(const std::vector<std::string>& a_names, std::string_view a_name)
 	{
-		std::set<std::string> seen, repeated;
-		for (const auto& name : a_names) {
-			if (!seen.insert(name).second) {
-				repeated.insert(name);
+		std::optional<std::size_t> found;
+		for (std::size_t i = 0; i < a_names.size(); ++i) {
+			if (a_names[i] == a_name) {
+				if (found) {
+					return std::nullopt;
+				}
+				found = i;
 			}
 		}
-		std::set<std::string> out;
-		std::ranges::set_difference(seen, repeated, std::inserter(out, out.end()));
-		return out;
+		return found;
+	}
+
+	// CSF numbers its skills' actor values ('CSF' << 8) + tree index, far past
+	// the engine's own values, so a value at or above the base is one of its
+	// skills. Signed, like ActorValue, so kNone (-1) is not.
+	inline constexpr std::int32_t kCustomActorValueBase = ('C' << 24) | ('S' << 16) | ('F' << 8);
+
+	[[nodiscard]] constexpr bool IsCustomActorValue(std::int32_t a_value) noexcept
+	{
+		return a_value >= kCustomActorValueBase;
 	}
 
 	// A custom skill's cap and the gates paid in its current climb, kept in the

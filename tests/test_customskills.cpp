@@ -7,8 +7,10 @@
 
 #include <cstdio>
 #include <map>
+#include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 using namespace BM::CustomSkillsData;
 
@@ -91,12 +93,27 @@ static void TestSectionName()
 	CHECK(SectionName("lolligagging") == "CustomSkill.lolligagging");
 }
 
-static void TestUniqueNames()
+static void TestUniqueIndex()
 {
-	const auto unique = UniqueNames({ "A", "B", "A" });
-	CHECK(unique == std::set<std::string>{ "B" });
-	CHECK(UniqueNames({}).empty());
-	CHECK(UniqueNames({ "X", "Y" }).size() == 2);
+	const std::vector<std::string> names{ "Lockpicking+", "Twin", "Twin", "Cooking" };
+	CHECK(UniqueIndex(names, "Cooking") == std::optional<std::size_t>{ 3 });
+	CHECK(UniqueIndex(names, "Lockpicking+") == std::optional<std::size_t>{ 0 });
+	CHECK(!UniqueIndex(names, "Twin"));  // shared: cannot pick one (Review Focus 5)
+	CHECK(!UniqueIndex(names, "Missing"));
+	CHECK(!UniqueIndex({}, ""));
+}
+
+static void TestCustomActorValue()
+{
+	// CSF numbers its skills ('CSF' << 8) + tree index.
+	CHECK(kCustomActorValueBase == 0x43534600);
+	CHECK(IsCustomActorValue(0x43534600));
+	CHECK(IsCustomActorValue(0x43534605));
+	CHECK(!IsCustomActorValue(0x435345FF));
+	CHECK(!IsCustomActorValue(0));
+	CHECK(!IsCustomActorValue(23));   // kOneHanded
+	CHECK(!IsCustomActorValue(163));  // past the last vanilla value
+	CHECK(!IsCustomActorValue(-1));   // kNone
 }
 
 static void TestCapsCodec()
@@ -135,7 +152,8 @@ int main()
 {
 	TestCapsCodec();
 	TestCapsRecordLength();
-	TestUniqueNames();
+	TestUniqueIndex();
+	TestCustomActorValue();
 	TestFormRef();
 	TestParseSettings();
 	TestSectionName();

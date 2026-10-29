@@ -6,6 +6,7 @@
 
 #include <map>
 #include <mutex>
+#include <utility>
 
 // Per-save state: each skill's cap and the gates paid during its current
 // climb (PRD FR-1, FR-13, FR-22). Persisted in the SKSE co-save; missing data
@@ -80,6 +81,21 @@ namespace BM
 		{
 			const auto c = CustomCapOf(a_id);
 			return Curves::Limit(c.cap, c.gatesPaid);
+		}
+
+		// Reset Skill for a custom skill: the cap stays, the gates are owed
+		// again (FR-13). One locked step, so an Upgrade on the main thread
+		// cannot land between reading the gates and clearing them. Returns how
+		// many were paid, 0 when there was nothing to clear.
+		std::uint8_t ClearCustomGates(std::string_view a_id)
+		{
+			const std::string     key(a_id);
+			const std::lock_guard lock(_customMutex);
+			const auto            it = _customCaps.find(key);
+			if (it == _customCaps.end()) {
+				return 0;
+			}
+			return std::exchange(it->second.gatesPaid, std::uint8_t{ 0 });
 		}
 
 		void Reset()

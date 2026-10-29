@@ -15,8 +15,10 @@ namespace BM::Resources
 		bool          blackStarFilled{ false };
 	};
 
-	// What the player holds right now.
-	[[nodiscard]] Holdings Read();
+	// What the player holds right now. a_perkPool: the global that holds the
+	// perk points to pay with (a custom skill's own pool), read as a
+	// non-negative whole number; nullptr for the player's perk points.
+	[[nodiscard]] Holdings Read(RE::TESGlobal* a_perkPool);
 
 	// Filled black soul gems available to pay with: The Black Star counts as one.
 	[[nodiscard]] std::uint32_t GemsAvailable(const Holdings& a_holdings) noexcept;
@@ -30,6 +32,8 @@ namespace BM::Resources
 	};
 
 	// Spends a_cost, paying its gems the way a_gems says. Re-reads the player
-	// first and takes nothing unless everything is still covered (FR-5).
-	[[nodiscard]] SpendResult Spend(const Curves::StepCost& a_cost, const Curves::GemPlan& a_gems);
+	// first and takes nothing unless everything is still covered (FR-5). The
+	// perks come out of a_perkPool, as for Read.
+	[[nodiscard]] SpendResult Spend(const Curves::StepCost& a_cost, const Curves::GemPlan& a_gems,
+		RE::TESGlobal* a_perkPool);
 }

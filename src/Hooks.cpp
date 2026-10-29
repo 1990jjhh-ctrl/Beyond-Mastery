@@ -261,6 +261,11 @@ namespace BM::Hooks
 		return g_legendaryMenuInstalled;
 	}
 
+	bool CustomSkillLimitInstalled() noexcept
+	{
+		return g_customSkillsInstalled;
+	}
+
 	bool ScalingInstalled() noexcept
 	{
 		return g_scalingInstalled;

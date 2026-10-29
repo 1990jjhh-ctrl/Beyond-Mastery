@@ -79,7 +79,7 @@ namespace BM::Resources
 		}
 	}
 
-	Holdings Read()
+	Holdings Read(RE::TESGlobal* a_perkPool)
 	{
 		Holdings holdings;
 		auto*    player = RE::PlayerCharacter::GetSingleton();
@@ -87,9 +87,15 @@ namespace BM::Resources
 			return holdings;
 		}
 
-		// perkCount moves at 1.6.629 and again at 1.7.99; only NG's runtime
-		// accessor knows where (docs/development.md, "Rules for code").
-		holdings.perks = player->GetGameStatsData().perkCount;
+		if (a_perkPool) {
+			// Truncated like the souls below: a partial point buys nothing.
+			const auto pool = a_perkPool->value;
+			holdings.perks = pool > 0.0f ? static_cast<std::uint32_t>(pool) : 0;
+		} else {
+			// perkCount moves at 1.6.629 and again at 1.7.99; only NG's runtime
+			// accessor knows where (docs/development.md, "Rules for code").
+			holdings.perks = player->GetGameStatsData().perkCount;
+		}
 
 		const auto souls = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kDragonSouls);
 		holdings.dragonSouls = souls > 0.0f ? static_cast<std::uint32_t>(souls) : 0;
@@ -105,7 +111,7 @@ namespace BM::Resources
 		return a_holdings.consumableGems + (a_holdings.blackStarFilled ? 1u : 0u);
 	}
 
-	SpendResult Spend(const Curves::StepCost& a_cost, const Curves::GemPlan& a_gems)
+	SpendResult Spend(const Curves::StepCost& a_cost, const Curves::GemPlan& a_gems, RE::TESGlobal* a_perkPool)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
@@ -114,7 +120,7 @@ namespace BM::Resources
 
 		// FR-5: everything is checked before anything is taken. Re-read rather
 		// than trust the box the player was looking at.
-		const auto have = Read();
+		const auto have = Read(a_perkPool);
 		const auto plannedGems = a_gems.consumable + (a_gems.blackStar ? 1u : 0u);
 		if (plannedGems != a_cost.blackSoulGems ||
 			!Curves::Affordable(a_cost, have.perks, GemsAvailable(have), have.dragonSouls) ||
@@ -165,7 +171,11 @@ namespace BM::Resources
 			left -= take;
 		}
 
-		player->GetGameStatsData().perkCount -= static_cast<std::uint8_t>(a_cost.perks);
+		if (a_perkPool) {
+			a_perkPool->value -= static_cast<float>(a_cost.perks);
+		} else {
+			player->GetGameStatsData().perkCount -= static_cast<std::uint8_t>(a_cost.perks);
+		}
 
 		// The way the engine itself spends a dragon soul when a shout is learned:
 		// ModActorValue(kPermanent, kDragonSouls, -1.0) (SkyrimSE.exe 1.7.104,
@@ -175,8 +185,8 @@ namespace BM::Resources
 				RE::ActorValue::kDragonSouls, -static_cast<float>(a_cost.dragonSouls));
 		}
 
-		logger::info("Spent {} perk(s), {} dragon soul(s), {} black soul gem(s){}", a_cost.perks,
-			a_cost.dragonSouls, a_gems.consumable, a_gems.blackStar ? " and The Black Star's soul" : "");
+		logger::info("Spent {} perk(s){}, {} dragon soul(s), {} black soul gem(s){}", a_cost.perks,
+			a_perkPool ? std::format(" from global {:08X}", a_perkPool->GetFormID()) : std::string{}, a_cost.dragonSouls, a_gems.consumable, a_gems.blackStar ? " and The Black Star's soul" : "");
 		return SpendResult::kSpent;
 	}
 }

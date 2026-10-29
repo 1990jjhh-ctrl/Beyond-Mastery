@@ -80,6 +80,7 @@ namespace BM::CustomSkills
 				skill.level = *level;
 				const auto name = entry.find("name");
 				skill.name = name != entry.end() && name->is_string() ? name->get<std::string>() : skill.id;
+				skill.displayName = skill.name;
 				skill.legendary = FormField(entry, "legendary");
 				skill.perkPoints = perkPoints;
 				g_skills.push_back(std::move(skill));
@@ -96,6 +97,15 @@ namespace BM::CustomSkills
 				logger::warn("Custom skill {}: {} {}|{:X} not found", a_skill.id, a_what, a_ref->plugin, a_ref->localID);
 			}
 			return global;
+		}
+
+		// CSF names a skill's ActorValueInfo after the JSON name passed through
+		// SKSE's translation, so a "$KEY" name shows translated; anything else,
+		// or a key with no translation, stays as written.
+		std::string Translated(const std::string& a_name)
+		{
+			std::string out;
+			return SKSE::Translation::Translate(a_name, out) ? out : a_name;
 		}
 	}
 
@@ -139,6 +149,10 @@ namespace BM::CustomSkills
 			s.levelGlobal = Lookup(s.level, s, "level global");
 			s.legendaryGlobal = Lookup(s.legendary, s, "legendary global");
 			s.perkPointsGlobal = Lookup(s.perkPoints, s, "perk points global");
+			s.displayName = Translated(s.name);
+			if (s.displayName != s.name) {
+				logger::info("Custom skill {}: name {} shows as {}", s.id, s.name, s.displayName);
+			}
 		}
 		g_active = true;
 	}
@@ -165,15 +179,16 @@ namespace BM::CustomSkills
 
 	Skill* FindByName(std::string_view a_name) noexcept
 	{
-		std::vector<std::string> names;
-		for (const auto& s : g_skills) {
-			names.push_back(s.name);
+		try {
+			std::vector<std::string> names;
+			for (const auto& s : g_skills) {
+				names.push_back(s.displayName);
+			}
+			const auto index = CustomSkillsData::UniqueIndex(names, a_name);
+			return index ? &g_skills[*index] : nullptr;
+		} catch (...) {
+			return nullptr;  // the copies can throw bad_alloc
 		}
-		if (!CustomSkillsData::UniqueNames(names).contains(std::string(a_name))) {
-			return nullptr;
-		}
-		const auto it = std::ranges::find(g_skills, a_name, &Skill::name);
-		return it != g_skills.end() ? &*it : nullptr;
 	}
 
 	bool AnyEnabled() noexcept
@@ -186,9 +201,25 @@ namespace BM::CustomSkills
 		constexpr std::int32_t kVanilla = State::kDefaultCap;  // CSF's own limit
 		try {
 			const auto skill = FindByLevelGlobal(a_level);
-			return skill && skill->settings.enable ? State::Get().CustomLimitOf(skill->id) : kVanilla;
+			if (!skill) {
+				return kVanilla;
+			}
+			// As Hooks::GetSkillCap does for the vanilla skills: paid gates exist
+			// only at 100 and above, so a skill below 100 that still holds some
+			// has been reset and starts a new climb (FR-13). CSF calls this on
+			// every XP gain, so the reset is caught whenever it lands, and never
+			// after a declined Legendary, because then the level never dropped.
+			// Cleared for a disabled skill too: re-enabled at 100, it must pay
+			// its gates again rather than climb on to its old limit.
+			auto& state = State::Get();
+			if (a_level->value < Curves::kVanillaCap) {
+				if (const auto cleared = state.ClearCustomGates(skill->id); cleared > 0) {
+					logger::info("Custom skill {} below 100: its {} paid gate(s) are owed again", skill->id, cleared);
+				}
+			}
+			return skill->settings.enable ? state.CustomLimitOf(skill->id) : kVanilla;
 		} catch (...) {
-			return kVanilla;  // CustomLimitOf builds a std::string key
+			return kVanilla;  // State builds a std::string key and locks a mutex, both of which can throw
 		}
 	}
 
