@@ -1,5 +1,6 @@
 #include "Compat.h"
 #include "Config.h"
+#include "CustomSkills.h"
 #include "HookSites.h"
 #include "Hooks.h"
 #include "State.h"
@@ -78,6 +79,7 @@ namespace
 		case SKSE::MessagingInterface::kDataLoaded:
 			// Check the sites first so NotifyConflicts can fold a signature
 			// mismatch into the same single warning.
+			BM::CustomSkills::Resolve();
 			BM::Hooks::InstallAll();
 			NotifyConflicts();
 			break;

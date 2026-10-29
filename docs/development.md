@@ -51,7 +51,7 @@ To test a build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/P
 
 `scripts/test.sh` runs every test: the C++ binaries in `tests/` (self-contained, no framework; add a new one to the script's loop) and the Python tests under stdlib `unittest`. Each test file starts with a comment saying what it covers.
 
-They can only cover code that runs without the game: the headers `Curves.h`, `HookSites.h`, `Patterns.h`, `Stubs.h` and `Texts.h`, and the scripts. Everything else needs the game, and a cross-compiled DLL can crash on ABI or layout mismatches the compiler cannot see. **In-game testing is mandatory** before claiming a change works.
+They can only cover code that runs without the game: the headers `Curves.h`, `CustomSkillsData.h`, `CustomSkillsSites.h`, `HookSites.h`, `Patterns.h`, `Stubs.h` and `Texts.h`, and the scripts. `tests/test_customskills_sites.py` also checks `CustomSkillsSites.h` against a real Custom Skills Framework 3.2.0 `CustomSkills.dll` when `BM_CSF_DLL` points to one, and skips that part otherwise. Everything else needs the game, and a cross-compiled DLL can crash on ABI or layout mismatches the compiler cannot see. **In-game testing is mandatory** before claiming a change works.
 
 ## Layout
 
@@ -64,10 +64,12 @@ Each source file starts with a comment describing it. As a map:
 | `src/Patterns.h`, `src/Stubs.h` | Byte-signature matching, the hand-written trampolines |
 | `src/Hooks.*` | Checking and installing every hook |
 | `src/Scaling.*` | Formula scaling above 100 |
+| `src/CustomSkills.*` | Custom Skills Framework skills: discovery from CSF's JSON files, opt-in settings, level limit |
+| `src/CustomSkillsData.h`, `src/CustomSkillsSites.h` | Game-free: the per-skill INI settings, the CCAP co-save encoding; CSF 3.2.0 patch sites |
 | `src/Menu.*`, `src/Texts.h` | The Legendary menu and its text |
 | `src/Resources.*` | Perks, dragon souls, soul gems |
 | `src/State.*` | Caps and gates in the co-save |
-| `src/Compat.*` | Plugins Beyond Mastery adapts to (Experience) |
+| `src/Compat.*` | Plugins Beyond Mastery adapts to (Experience, Custom Skills Framework) |
 | `src/Skills.h`, `src/Config.*`, `src/main.cpp` | Skill mapping, INI settings, entry point |
 | `tests/`, `scripts/` | Tests; setup, build, packaging and verification scripts |
 | `lib/commonlibsse-ng` | CommonLibSSE-NG submodule |

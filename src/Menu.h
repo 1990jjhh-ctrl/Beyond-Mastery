@@ -5,7 +5,9 @@
 // Pressing Legendary in the skill tree normally shows vanilla's yes/no box.
 // Hooks.cpp redirects the call that creates that box to OpenLegendary, which
 // shows Reset Skill / Upgrade / Cancel instead. Reset Skill hands back to the
-// vanilla callback, so it stays exactly vanilla Legendary.
+// vanilla callback, so it stays exactly vanilla Legendary. An enabled Custom
+// Skills Framework skill gets the same menu: CSF builds the same callback for
+// it, so Reset Skill runs CSF's own Legendary (FR-33).
 
 namespace BM::Menu
 {

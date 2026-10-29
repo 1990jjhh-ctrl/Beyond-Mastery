@@ -3,6 +3,8 @@
 #include "Compat.h"
 #include "Config.h"
 #include "Curves.h"
+#include "CustomSkills.h"
+#include "CustomSkillsSites.h"
 #include "Menu.h"
 #include "Scaling.h"
 #include "Skills.h"
@@ -23,6 +25,7 @@ namespace BM::Hooks
 		bool g_legendaryMenuInstalled = false;
 		bool g_scalingInstalled = false;
 		bool g_charXPClampInstalled = false;
+		bool g_customSkillsInstalled = false;
 
 		// REL::Module classifies a runtime by minor version: 4 = VR, 5 = SE,
 		// 6 and above = AE. So 1.7.x takes the AE path throughout -- the AE
@@ -258,6 +261,11 @@ namespace BM::Hooks
 		return g_legendaryMenuInstalled;
 	}
 
+	bool CustomSkillLimitInstalled() noexcept
+	{
+		return g_customSkillsInstalled;
+	}
+
 	bool ScalingInstalled() noexcept
 	{
 		return g_scalingInstalled;
@@ -415,12 +423,16 @@ namespace BM::Hooks
 		[[nodiscard]] bool InstallScaling()
 		{
 			// The player's ActorValueOwner vtable, slot 1 (GetActorValue), must
-			// still hold the engine's shared function; anything else means
-			// another mod got there first.
+			// still hold the engine's shared function, or Custom Skills
+			// Framework's, which forwards every vanilla skill to it (FR-33);
+			// anything else means another mod got there first.
 			REL::Relocation<std::uintptr_t>        vtable{ RE::VTABLE_PlayerCharacter[5] };
 			static REL::Relocation<std::uintptr_t> getActorValue{ RELOCATION_ID(37517, 38462) };
 			const auto                             slot = *reinterpret_cast<const std::uintptr_t*>(vtable.address() + sizeof(void*));
-			if (slot != getActorValue.address()) {
+			if (Compat::IsInCustomSkills(slot)) {
+				logger::info("The player's GetActorValue slot holds {}'s function; formula scaling wraps it (FR-33)",
+					Compat::kCustomSkills);
+			} else if (slot != getActorValue.address()) {
 				logger::error(
 					"The player's GetActorValue slot no longer holds the engine's function -- another mod "
 					"replaced it and needs a compatibility patch. Not installing formula scaling.");
@@ -566,6 +578,215 @@ namespace BM::Hooks
 			Scaling::LogSelfCheck();
 			return true;
 		}
+
+		// --- Custom Skills Framework's level limit (FR-35) -----------------------
+
+		// Bytes the loaded image spans, so no check reads past the end of a
+		// CustomSkills.dll smaller than 3.2.0.
+		[[nodiscard]] std::uint32_t ImageSize(std::uintptr_t a_base) noexcept
+		{
+			const auto* dos = reinterpret_cast<const REX::W32::IMAGE_DOS_HEADER*>(a_base);
+			const auto* nt = reinterpret_cast<const REX::W32::IMAGE_NT_HEADERS64*>(a_base + dos->lfanew);
+			return nt->optionalHeader.imageSize;
+		}
+
+		[[nodiscard]] bool MatchesInImage(std::uintptr_t a_base, std::uint32_t a_imageSize, std::uint64_t a_rva,
+			std::string_view a_pattern) noexcept
+		{
+			return a_rva + Patterns::Length(a_pattern) <= a_imageSize &&
+			       Patterns::Matches(a_pattern, reinterpret_cast<const std::uint8_t*>(a_base + a_rva));
+		}
+
+		// Whether a 5-byte jmp or call at a_site reaches a_target.
+		[[nodiscard]] bool InRel32(std::uintptr_t a_site, std::uintptr_t a_target) noexcept
+		{
+			const auto disp = static_cast<std::int64_t>(a_target) - static_cast<std::int64_t>(a_site + 5);
+			return disp >= std::numeric_limits<std::int32_t>::min() && disp <= std::numeric_limits<std::int32_t>::max();
+		}
+
+		// Writes a 5-byte jmp (0xE9) or call (0xE8) at a_site to a_target, then
+		// NOPs up to a_length (at most 16). The caller checked InRel32.
+		void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_target, std::size_t a_length)
+		{
+			std::array<std::uint8_t, 16> bytes{};
+			bytes.fill(REL::NOP);
+			const auto disp = static_cast<std::int32_t>(static_cast<std::int64_t>(a_target) - static_cast<std::int64_t>(a_site + 5));
+			bytes[0] = a_opcode;
+			std::memcpy(&bytes[1], &disp, sizeof(disp));
+			REL::safe_write(a_site, bytes.data(), a_length);
+		}
+
+		// Commits a_size executable bytes within 1 GiB of a_near, so a rel32
+		// from anywhere near a_near reaches every byte of it. nullptr if no
+		// free region in that window can be allocated; never terminates.
+		[[nodiscard]] void* AllocateNear(std::uintptr_t a_near, std::size_t a_size) noexcept
+		{
+			constexpr std::uintptr_t kWindow = std::uintptr_t{ 1 } << 30;
+
+			REX::W32::SYSTEM_INFO info{};
+			REX::W32::GetSystemInfo(&info);
+			const std::uintptr_t granularity = info.allocationGranularity;
+			const auto           roundUp = [&](std::uintptr_t a_v) { return (a_v + granularity - 1) / granularity * granularity; };
+
+			const auto lowest = (std::max)(a_near > kWindow ? a_near - kWindow : std::uintptr_t{ 0 },
+				reinterpret_cast<std::uintptr_t>(info.appAddressMin));
+			const auto highest = (std::min)(a_near + kWindow, reinterpret_cast<std::uintptr_t>(info.appAddressMax));
+
+			for (auto at = roundUp(lowest); at + a_size <= highest;) {
+				REX::W32::MEMORY_BASIC_INFORMATION region{};
+				if (REX::W32::VirtualQuery(reinterpret_cast<const void*>(at), &region, sizeof(region)) == 0) {
+					return nullptr;
+				}
+				const auto regionBase = reinterpret_cast<std::uintptr_t>(region.baseAddress);
+				const auto regionEnd = regionBase + region.regionSize;
+				// The bare MEM_* and PAGE_* names: xbyak includes <windows.h>, whose
+				// macros of the same names break REX::W32's.
+				if (region.state == MEM_FREE) {
+					const auto start = roundUp((std::max)(at, regionBase));
+					if (start + a_size <= regionEnd && start + a_size <= highest) {
+						if (auto* mem = REX::W32::VirtualAlloc(reinterpret_cast<void*>(start), a_size,
+								MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)) {
+							return mem;
+						}
+					}
+				}
+				if (regionEnd <= at) {
+					return nullptr;  // no progress; never expected
+				}
+				at = regionEnd;
+			}
+			return nullptr;
+		}
+
+		// CSF 3.2.0 stops a custom skill at 100 in Skill::Advance and
+		// Skill::Increment; each check is redirected to a stub that asks
+		// CustomSkills::LevelLimit (Stubs.h). Both functions and every site
+		// are checked before anything is written: on any mismatch nothing in
+		// CSF changes, and its skills stay at 100.
+		[[nodiscard]] bool InstallCustomSkills()
+		{
+			namespace Sites = CustomSkillsSites;
+			using namespace Xbyak::util;
+
+			const auto module = REX::W32::GetModuleHandleW(Sites::kModule);
+			if (module == nullptr) {
+				logger::error("{} is loaded, but CustomSkills.dll is not: its skills stay at 100", Compat::kCustomSkills);
+				return false;
+			}
+			const auto base = reinterpret_cast<std::uintptr_t>(module);
+			const auto imageSize = ImageSize(base);
+
+			bool ready = true;
+			for (const auto* function : Sites::kFunctions) {
+				if (!MatchesInImage(base, imageSize, function->rva, function->entry)) {
+					logger::error("Hook site {} at {:#x}: {} -- not Custom Skills Framework 3.2.0's", function->name,
+						base + function->rva, StatusName(SiteStatus::kSignatureMismatch));
+					ready = false;
+				}
+			}
+
+			// Each site, with the registers its stub reads and where it goes on.
+			struct Plan
+			{
+				const Sites::Site*  site;
+				const Xbyak::Reg64& self;
+				const Xbyak::Reg32& level;
+				Stubs::LimitExit    exit;
+				std::uint32_t       branch;  // from the function's entry
+				std::uintptr_t      address{};
+			};
+			std::array plans{
+				Plan{ &Sites::kAdvanceLoopEntry, r14, esi, Stubs::LimitExit::kBranchIfReached, Sites::kAdvanceLoopExit },
+				Plan{ &Sites::kAdvanceLoopRepeat, r14, esi, Stubs::LimitExit::kBranchIfBelow, Sites::kAdvanceLoopTop },
+				Plan{ &Sites::kIncrementCheck, rdi, r14d, Stubs::LimitExit::kBranchIfReached, Sites::kIncrementReturn },
+				Plan{ &Sites::kIncrementCount, rdi, r14d, Stubs::LimitExit::kRemaining, 0 },
+			};
+			static_assert(std::tuple_size_v<decltype(plans)> == Sites::kLimitSites.size());
+
+			// The use-XP factor only with bScaleXPGainAbove100 (FR-9): off, it
+			// would be a no-op hook.
+			const bool scaleXP = Config::Get().scaleXPGainAbove100;
+			const auto checkSite = [&](const Sites::Site& a_site) {
+				const auto rva = std::uint64_t{ a_site.function->rva } + a_site.offset;
+				const auto ok = MatchesInImage(base, imageSize, rva, a_site.pattern);
+				if (ok) {
+					logger::info("Hook site {} resolved to {:#x}: {}", a_site.name, base + rva, StatusName(SiteStatus::kReady));
+				} else {
+					logger::error("Hook site {} at {:#x}: {} -- not patching it", a_site.name, base + rva,
+						StatusName(SiteStatus::kSignatureMismatch));
+				}
+				ready = ready && ok;
+				return base + rva;
+			};
+			for (auto& plan : plans) {
+				plan.address = checkSite(*plan.site);
+			}
+			const auto useXP = scaleXP ? checkSite(Sites::kAdvanceUseXP) : 0;
+
+			if (!ready) {
+				g_signatureMismatch = true;
+				logger::error("{}'s level limit is not patched: custom skills stay at 100", Compat::kCustomSkills);
+				return false;
+			}
+
+			// A rel32 from CSF cannot reach SKSE's trampoline, which sits near
+			// SkyrimSE.exe, so the stubs get their own block near CSF.
+			// Allocated here rather than by Trampoline::create, which would
+			// terminate the game if it found no memory. Never freed: CSF jumps
+			// into it until the process ends.
+			auto* block = AllocateNear(base + Sites::kAdvance.rva, Stubs::kCustomSkillsTrampolineSize);
+			if (block == nullptr) {
+				logger::error("No memory for the {} stubs within reach of CustomSkills.dll: custom skills stay at 100",
+					Compat::kCustomSkills);
+				return false;
+			}
+			auto* trampoline = new SKSE::Trampoline("BeyondMastery CustomSkills");
+			trampoline->set_trampoline(block, Stubs::kCustomSkillsTrampolineSize);
+
+			const auto place = [&](Xbyak::CodeGenerator& a_code) {
+				a_code.ready();
+				auto* stub = trampoline->allocate(a_code.getSize());
+				std::memcpy(stub, a_code.getCode(), a_code.getSize());
+				return reinterpret_cast<std::uintptr_t>(stub);
+			};
+
+			std::array<std::uintptr_t, plans.size()> stubs{};
+			for (std::size_t i = 0; i < plans.size(); ++i) {
+				const auto&           plan = plans[i];
+				const auto            function = base + plan.site->function->rva;
+				Stubs::LevelLimitStub code{ reinterpret_cast<std::uintptr_t>(&CustomSkills::LevelLimit), plan.self,
+					plan.level, plan.exit, function + plan.branch, plan.address + plan.site->length };
+				stubs[i] = place(code);
+			}
+			std::uintptr_t useXPStub = 0;
+			if (scaleXP) {
+				Stubs::UseXPFactorStub code{ reinterpret_cast<std::uintptr_t>(&CustomSkills::UseXPFactor),
+					CallTarget(useXP), r14 };
+				useXPStub = place(code);
+			}
+
+			bool reachable = !scaleXP || InRel32(useXP, useXPStub);
+			for (std::size_t i = 0; i < plans.size(); ++i) {
+				reachable = reachable && InRel32(plans[i].address, stubs[i]);
+			}
+			if (!reachable) {
+				logger::error("No memory for the {} stubs within reach of CustomSkills.dll: custom skills stay at 100",
+					Compat::kCustomSkills);
+				return false;
+			}
+
+			for (std::size_t i = 0; i < plans.size(); ++i) {
+				WriteRel32(plans[i].address, 0xE9, stubs[i], plans[i].site->length);
+				logger::info("{} hooked at {:#x} (stub {:#x})", plans[i].site->name, plans[i].address, stubs[i]);
+			}
+			if (scaleXP) {
+				WriteRel32(useXP, 0xE8, useXPStub, Sites::kAdvanceUseXP.length);
+				logger::info("{} hooked at {:#x} (stub {:#x})", Sites::kAdvanceUseXP.name, useXP, useXPStub);
+			} else {
+				logger::info("bScaleXPGainAbove100 is off, so custom skills' use XP is not hooked");
+			}
+			return true;
+		}
 	}
 
 	bool InstallAll()
@@ -688,15 +909,27 @@ namespace BM::Hooks
 			allReady = allReady && g_scalingInstalled;
 		}
 
+		// Custom Skills Framework's level limit (FR-35): only for an enabled
+		// custom skill, otherwise CSF is left untouched.
+		if (!Compat::CustomSkillsLoaded()) {
+			logger::info("{} is not loaded, so its level limit is not patched", Compat::kCustomSkills);
+		} else if (!CustomSkills::AnyEnabled()) {
+			logger::info("No custom skill is enabled, so {}'s level limit is not patched", Compat::kCustomSkills);
+		} else {
+			g_customSkillsInstalled = InstallCustomSkills();
+			allReady = allReady && g_customSkillsInstalled;
+		}
+
 		logger::info(
 			"Hook sites checked, {}; cap hook {}; skill XP gain hook {}; character-XP clamp {}; Legendary menu {}; "
-			"formula scaling {}",
+			"formula scaling {}; custom skill limit {}",
 			allReady ? "all ready" : "some unavailable",
 			g_capHookInstalled ? "installed" : "not installed",
 			g_xpGainHookInstalled ? "installed" : "not installed",
 			g_charXPClampInstalled ? "installed" : "not installed",
 			g_legendaryMenuInstalled ? "installed" : "not installed",
-			g_scalingInstalled ? "installed" : "not installed");
+			g_scalingInstalled ? "installed" : "not installed",
+			g_customSkillsInstalled ? "installed" : "not installed");
 		return allReady;
 	}
 }

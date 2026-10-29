@@ -1,6 +1,8 @@
 #include "Menu.h"
 
 #include "Curves.h"
+#include "CustomSkills.h"
+#include "Hooks.h"
 #include "Resources.h"
 #include "Skills.h"
 #include "State.h"
@@ -9,6 +11,8 @@
 #include <cstring>
 #include <format>
 #include <functional>
+#include <set>
+#include <variant>
 
 namespace BM::Menu
 {
@@ -72,21 +76,55 @@ namespace BM::Menu
 			RE::MessageBoxMenu::Create(body, callback, kButtonPressOffset, kWarningType, kMenuDepth, labels);
 		}
 
-		[[nodiscard]] std::string SkillName(RE::ActorValue a_skill)
+		// One of the 18 vanilla skills, or an enabled Custom Skills Framework
+		// skill (FR-33). The helpers below are the only places that tell them
+		// apart, so the menu itself is one flow for both.
+		using SkillRef = std::variant<RE::ActorValue, CustomSkills::Skill*>;
+
+		[[nodiscard]] std::string SkillName(const SkillRef& a_skill)
 		{
-			const auto* info = RE::ActorValueList::GetActorValueInfo(a_skill);
+			if (const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill)) {
+				// The name CSF gave its ActorValueInfo, which is how it was found.
+				return (*custom)->displayName.empty() ? "this skill" : (*custom)->displayName;
+			}
+			const auto* info = RE::ActorValueList::GetActorValueInfo(std::get<RE::ActorValue>(a_skill));
 			const char* name = info ? info->GetFullName() : nullptr;
 			return name && *name ? name : "this skill";
 		}
 
-		[[nodiscard]] float BaseLevel(RE::ActorValue a_skill)
+		[[nodiscard]] float BaseLevel(const SkillRef& a_skill)
 		{
+			if (const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill)) {
+				// CSF keeps a custom skill's level in its level global.
+				return (*custom)->levelGlobal ? (*custom)->levelGlobal->value : 0.0f;
+			}
 			const auto* player = RE::PlayerCharacter::GetSingleton();
-			return player ? player->AsActorValueOwner()->GetBaseActorValue(a_skill) : 0.0f;
+			return player ? player->AsActorValueOwner()->GetBaseActorValue(std::get<RE::ActorValue>(a_skill)) : 0.0f;
 		}
 
-		void ShowMain(RE::ActorValue a_skill, Callback a_vanilla);
-		void ShowUpgrade(RE::ActorValue a_skill, Callback a_vanilla);
+		// The skill's cap and the gates paid in its current climb.
+		[[nodiscard]] CustomSkillsData::CustomCap CapOf(const SkillRef& a_skill)
+		{
+			if (const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill)) {
+				return State::Get().CustomCapOf((*custom)->id);
+			}
+			const auto  index = Skills::ToIndex(std::get<RE::ActorValue>(a_skill));
+			const auto& state = State::Get();
+			return { state.Cap(index), state.GatesPaid(index) };
+		}
+
+		// The perk points an upgrade is paid with: the skill's own pool when its
+		// sPerkSource is own, otherwise the player's (nullptr).
+		[[nodiscard]] RE::TESGlobal* PerkPool(const SkillRef& a_skill)
+		{
+			const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill);
+			return custom && (*custom)->settings.perkSource == CustomSkillsData::PerkSource::kOwn ?
+			           (*custom)->perkPointsGlobal :
+			           nullptr;
+		}
+
+		void ShowMain(SkillRef a_skill, Callback a_vanilla);
+		void ShowUpgrade(SkillRef a_skill, Callback a_vanilla);
 
 		// Vanilla's second Legendary box takes its text from this game setting
 		// when Run builds it; the level it resets to is the other one.
@@ -98,8 +136,10 @@ namespace BM::Menu
 		// menu stands in for the first box: the first Run(1) on this callback
 		// shows vanilla's second box, and only that box's Yes resets. Gates are
 		// cleared by Hooks::GetSkillCap once the skill is seen below 100, which
-		// is right whichever answer the player gives.
-		void ResetSkill(RE::ActorValue a_skill, const Callback& a_vanilla)
+		// is right whichever answer the player gives -- for a custom skill, by
+		// CustomSkills::LevelLimit. A custom skill's callback runs CSF's own
+		// Legendary: CSF builds this same vanilla callback for it.
+		void ResetSkill(const SkillRef& a_skill, const Callback& a_vanilla)
 		{
 			if (!a_vanilla) {
 				return;
@@ -108,11 +148,10 @@ namespace BM::Menu
 			auto*       settings = RE::GameSettingCollection::GetSingleton();
 			auto*       setting = settings ? settings->GetSetting(kSecondConfirmSetting) : nullptr;
 			const auto* resetValue = settings ? settings->GetSetting(kResetValueSetting) : nullptr;
-			const auto  index = Skills::ToIndex(a_skill);
-			const auto& state = State::Get();
+			const auto  cap = CapOf(a_skill);
 			const auto  confirm = Texts::ResetConfirm(SkillName(a_skill),
-				resetValue ? static_cast<int>(resetValue->GetFloat()) : kVanillaResetValue, state.Cap(index),
-				Curves::DragonSoulsPaid(state.GatesPaid(index)));
+				resetValue ? static_cast<int>(resetValue->GetFloat()) : kVanillaResetValue, cap.cap,
+				Curves::DragonSoulsPaid(cap.gatesPaid));
 
 			// The box gets our text in place of vanilla's for just the moment Run
 			// builds it -- it copies the text -- and the setting is restored
@@ -177,9 +216,13 @@ namespace BM::Menu
 			data.xp = 0.0f;
 		}
 
-		void Apply(RE::ActorValue a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
+		// A custom skill only gets the new cap: RestartLevel works on the
+		// engine's PlayerSkills data, which CSF does not use, and CSF's own
+		// progress (its Ratio global) is left as it is -- FR-8 is not carried
+		// over to custom skills.
+		void Apply(const SkillRef& a_skill, const Curves::Upgrade& a_upgrade, const Curves::GemPlan& a_gems)
 		{
-			switch (Resources::Spend(a_upgrade.cost, a_gems)) {
+			switch (Resources::Spend(a_upgrade.cost, a_gems, PerkPool(a_skill))) {
 			case Resources::SpendResult::kSpent:
 				break;
 			case Resources::SpendResult::kNotAffordable:
@@ -189,13 +232,16 @@ namespace BM::Menu
 				RE::SendHUDMessage::ShowHUDMessage("Could not take the soul gems; the upgrade was not applied. See BeyondMastery.log.");
 				return;
 			}
-			const auto index = Skills::ToIndex(a_skill);
-			auto&      state = State::Get();
-			state.ApplyUpgrade(index, a_upgrade);
-			RestartLevel(a_skill);
-			const auto limit = Curves::Limit(state.Cap(index), state.GatesPaid(index));
-			logger::info("Upgrade: {} cap {} gates {} limit {}", SkillName(a_skill), state.Cap(index),
-				state.GatesPaid(index), limit);
+			if (const auto* custom = std::get_if<CustomSkills::Skill*>(&a_skill)) {
+				State::Get().SetCustomCap((*custom)->id, { a_upgrade.newCap, a_upgrade.newGatesPaid });
+			} else {
+				const auto av = std::get<RE::ActorValue>(a_skill);
+				State::Get().ApplyUpgrade(Skills::ToIndex(av), a_upgrade);
+				RestartLevel(av);
+			}
+			const auto cap = CapOf(a_skill);
+			const auto limit = Curves::Limit(cap.cap, cap.gatesPaid);
+			logger::info("Upgrade: {} cap {} gates {} limit {}", SkillName(a_skill), cap.cap, cap.gatesPaid, limit);
 			const auto message = std::format("{} can now reach {}.", SkillName(a_skill), limit);
 			RE::SendHUDMessage::ShowHUDMessage(message.c_str());
 		}
@@ -203,9 +249,9 @@ namespace BM::Menu
 		// FR-7: when the player could pay either with or without The Black Star,
 		// ask. When only one way works, use it -- the Upgrade box already said
 		// whether the Star is part of the count.
-		void Confirm(RE::ActorValue a_skill, Callback a_vanilla, Curves::Upgrade a_upgrade)
+		void Confirm(SkillRef a_skill, Callback a_vanilla, Curves::Upgrade a_upgrade)
 		{
-			const auto have = Resources::Read();
+			const auto have = Resources::Read(PerkPool(a_skill));
 			const auto needed = a_upgrade.cost.blackSoulGems;
 			const auto withStar = Curves::PlanGems(needed, have.consumableGems, have.blackStarFilled, true);
 			const auto withoutStar = Curves::PlanGems(needed, have.consumableGems, have.blackStarFilled, false);
@@ -227,15 +273,13 @@ namespace BM::Menu
 
 		// FR-16: the cost and the player's holdings, shown only once Upgrade is
 		// chosen. Unaffordable: name what is missing and offer only Back (FR-5).
-		void ShowUpgrade(RE::ActorValue a_skill, Callback a_vanilla)
+		void ShowUpgrade(SkillRef a_skill, Callback a_vanilla)
 		{
-			const auto  index = Skills::ToIndex(a_skill);
-			const auto& state = State::Get();
-			const auto  cap = state.Cap(index);
-			const auto  limit = Curves::Limit(cap, state.GatesPaid(index));
-			const auto  upgrade = Curves::UpgradeFor(cap, state.GatesPaid(index));
-			const auto  have = Resources::Read();
-			const auto  name = SkillName(a_skill);
+			const auto [cap, gatesPaid] = CapOf(a_skill);
+			const auto limit = Curves::Limit(cap, gatesPaid);
+			const auto upgrade = Curves::UpgradeFor(cap, gatesPaid);
+			const auto have = Resources::Read(PerkPool(a_skill));
+			const auto name = SkillName(a_skill);
 
 			std::string body = upgrade.kind == Curves::UpgradeKind::kGate ?
 			                       std::format("Break through {} in {}.\n\n", limit, name) :
@@ -268,14 +312,12 @@ namespace BM::Menu
 
 		// FR-15: Reset Skill, Upgrade, Cancel. Upgrade only at the limit; below
 		// it, the box names the level still to reach.
-		void ShowMain(RE::ActorValue a_skill, Callback a_vanilla)
+		void ShowMain(SkillRef a_skill, Callback a_vanilla)
 		{
-			const auto  index = Skills::ToIndex(a_skill);
-			const auto& state = State::Get();
-			const auto  cap = state.Cap(index);
-			const auto  limit = Curves::Limit(cap, state.GatesPaid(index));
-			const auto  name = SkillName(a_skill);
-			const bool  atLimit = Curves::AtCap(BaseLevel(a_skill), limit);
+			const auto [cap, gatesPaid] = CapOf(a_skill);
+			const auto limit = Curves::Limit(cap, gatesPaid);
+			const auto name = SkillName(a_skill);
+			const bool atLimit = Curves::AtCap(BaseLevel(a_skill), limit);
 			// At the cap a raise must stay loadable; an unpaid gate can always be paid.
 			const bool raisable = limit < cap || Curves::CapRaisable(cap);
 
@@ -300,6 +342,62 @@ namespace BM::Menu
 			static REL::Relocation<std::uintptr_t> vtable{ RE::LegendarySkillResetConfirmCallback::VTABLE[0] };
 			return a_callback && *reinterpret_cast<const std::uintptr_t*>(a_callback) == vtable.address();
 		}
+
+		// Why a custom skill keeps CSF's own Legendary box; nullptr when ours
+		// can open. A raise needs the cap enforced (CSF's limit patched), a
+		// level to compare and a Legendary global for CSF's reset; an own perk
+		// pool that is missing would otherwise charge the player instead.
+		[[nodiscard]] const char* VanillaBoxReason(const CustomSkills::Skill& a_skill)
+		{
+			if (!a_skill.settings.enable) {
+				return "it is not enabled";
+			}
+			if (!Hooks::CustomSkillLimitInstalled()) {
+				return "Custom Skills Framework's level limit is not patched";
+			}
+			if (!a_skill.levelGlobal) {
+				return "it has no level global";
+			}
+			if (!a_skill.legendaryGlobal) {
+				return "it has no Legendary global";
+			}
+			if (a_skill.settings.perkSource == CustomSkillsData::PerkSource::kOwn && !a_skill.perkPointsGlobal) {
+				return "its own perk pool was not found";
+			}
+			return nullptr;
+		}
+
+		// The custom skill a_value names, or nullptr after logging -- once per
+		// value and session -- why it gets CSF's own box. CSF's GetActorValueInfo
+		// hook answers for its own values with the skill's info, whose full name
+		// is the translated JSON name.
+		[[nodiscard]] CustomSkills::Skill* ResolveCustom(RE::ActorValue a_value)
+		{
+			static std::set<RE::ActorValue> logged;
+			const auto                      once = [&](const auto& a_message) {
+				if (logged.insert(a_value).second) {
+					logger::info("Legendary on custom skill {:#x}: {}; CSF's own box opens", std::to_underlying(a_value), a_message);
+				}
+			};
+
+			const auto* info = RE::ActorValueList::GetActorValueInfo(a_value);
+			const char* name = info ? info->GetFullName() : nullptr;
+			if (!name || !*name) {
+				once("no name for it");
+				return nullptr;
+			}
+			auto* skill = CustomSkills::FindByName(name);
+			if (!skill) {
+				// Also a name two skills share: neither can be picked (Review Focus 5).
+				once(std::format("no single custom skill is named \"{}\"", name));
+				return nullptr;
+			}
+			if (const auto* reason = VanillaBoxReason(*skill)) {
+				once(std::format("{} ({}): {}", skill->id, name, reason));
+				return nullptr;
+			}
+			return skill;
+		}
 	}
 
 	bool OpenLegendary(RE::BSString& a_message, const RE::BSTSmartPointer<RE::IMessageBoxCallback>& a_callback,
@@ -313,10 +411,16 @@ namespace BM::Menu
 			return RE::MessageBoxMenu::Create(a_message, a_callback, a_buttonPressOffset, a_warningType, a_menuDepth, a_buttons);
 		}
 		const auto skill = static_cast<const RE::LegendarySkillResetConfirmCallback*>(a_callback.get())->skill;
-		if (!Skills::IsSkill(skill)) {
-			return RE::MessageBoxMenu::Create(a_message, a_callback, a_buttonPressOffset, a_warningType, a_menuDepth, a_buttons);
+		if (Skills::IsSkill(skill)) {
+			ShowMain(skill, a_callback);
+			return true;
 		}
-		ShowMain(skill, a_callback);
-		return true;
+		if (CustomSkillsData::IsCustomActorValue(std::to_underlying(skill))) {
+			if (auto* custom = ResolveCustom(skill)) {
+				ShowMain(custom, a_callback);
+				return true;
+			}
+		}
+		return RE::MessageBoxMenu::Create(a_message, a_callback, a_buttonPressOffset, a_warningType, a_menuDepth, a_buttons);
 	}
 }
