@@ -2,6 +2,11 @@
 
 // INI settings (PRD FR-18, FR-28). File: Data/SKSE/Plugins/BeyondMastery.ini
 
+namespace BM::CustomSkills
+{
+	struct Skill;
+}
+
 namespace BM
 {
 	struct Config
@@ -25,5 +30,9 @@ namespace BM
 		// both the read and the write-back block of Config.cpp, with its
 		// comment string.
 		void Load();
+
+		// One key of a [CustomSkill.<id>] section (see CustomSkills::SetSetting).
+		// Updates a_skill and the INI only if the whole section stays valid.
+		[[nodiscard]] bool SetCustomSkillValue(CustomSkills::Skill& a_skill, std::string_view a_key, std::string_view a_value);
 	};
 }

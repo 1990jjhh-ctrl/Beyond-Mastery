@@ -88,8 +88,17 @@ static void TestSectionName()
 	CHECK(SectionName("lolligagging") == "CustomSkill.lolligagging");
 }
 
+static void TestUniqueNames()
+{
+	const auto unique = UniqueNames({ "A", "B", "A" });
+	CHECK(unique == std::set<std::string>{ "B" });
+	CHECK(UniqueNames({}).empty());
+	CHECK(UniqueNames({ "X", "Y" }).size() == 2);
+}
+
 int main()
 {
+	TestUniqueNames();
 	TestFormRef();
 	TestParseSettings();
 	TestSectionName();

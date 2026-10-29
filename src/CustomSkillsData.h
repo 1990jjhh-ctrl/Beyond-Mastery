@@ -9,7 +9,9 @@
 #include <cctype>
 #include <charconv>
 #include <cstdint>
+#include <iterator>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -121,4 +123,18 @@ namespace BM::CustomSkillsData
 		return "CustomSkill." + std::string(a_id);
 	}
 
+	// The names that exactly one skill has. A name shared by several skills
+	// cannot pick one of them, so it is left out.
+	[[nodiscard]] inline std::set<std::string> UniqueNames(const std::vector<std::string>& a_names)
+	{
+		std::set<std::string> seen, repeated;
+		for (const auto& name : a_names) {
+			if (!seen.insert(name).second) {
+				repeated.insert(name);
+			}
+		}
+		std::set<std::string> out;
+		std::ranges::set_difference(seen, repeated, std::inserter(out, out.end()));
+		return out;
+	}
 }

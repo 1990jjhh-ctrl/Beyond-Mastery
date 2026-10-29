@@ -33,6 +33,7 @@ get_target_property(COMMONLIB_SRC_DIR CommonLibSSE SOURCE_DIR)
 include("${COMMONLIB_SRC_DIR}/cmake/CommonLibSSE.cmake")
 
 find_path(SIMPLEINI_INCLUDE_DIRS "SimpleIni.h" REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 # ---------------------------------------------------------------------------
 # Plugin
@@ -50,6 +51,9 @@ set(SOURCES
 	src/Config.cpp
 	src/Compat.h
 	src/Compat.cpp
+	src/CustomSkillsData.h
+	src/CustomSkills.h
+	src/CustomSkills.cpp
 	src/State.h
 	src/State.cpp
 	src/Resources.h
@@ -82,5 +86,6 @@ add_commonlibsse_plugin(
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE src ${SIMPLEINI_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
