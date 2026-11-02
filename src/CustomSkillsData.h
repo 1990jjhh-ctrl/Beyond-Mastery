@@ -92,6 +92,65 @@ namespace BM::CustomSkillsData
 		return FormRef{ std::string(a_text.substr(0, bar)), value };
 	}
 
+	// CSF's JSON files with trailing commas removed. CSF's own reader accepts a
+	// comma before ] or } (skyrimacrobatics.json has one) and nlohmann-json
+	// doesn't, so without this a skill CSF loads would be missing here.
+	// Commas inside strings stay; comments between the comma and the bracket
+	// are looked past and kept, for the parser to skip.
+	[[nodiscard]] inline std::string StripTrailingCommas(std::string_view a_json)
+	{
+		// Index of the first character after a_from that is neither whitespace
+		// nor part of a comment.
+		const auto nextToken = [&](std::size_t a_from) {
+			std::size_t i = a_from;
+			while (i < a_json.size()) {
+				if (std::isspace(static_cast<unsigned char>(a_json[i]))) {
+					++i;
+				} else if (a_json.substr(i, 2) == "//") {
+					const auto end = a_json.find('\n', i);
+					i = end == std::string_view::npos ? a_json.size() : end + 1;
+				} else if (a_json.substr(i, 2) == "/*") {
+					const auto end = a_json.find("*/", i + 2);
+					i = end == std::string_view::npos ? a_json.size() : end + 2;
+				} else {
+					break;
+				}
+			}
+			return i;
+		};
+
+		std::string out;
+		out.reserve(a_json.size());
+		bool inString = false;
+		for (std::size_t i = 0; i < a_json.size(); ++i) {
+			const char c = a_json[i];
+			if (inString) {
+				out += c;
+				if (c == '\\' && i + 1 < a_json.size()) {
+					out += a_json[++i];
+				} else if (c == '"') {
+					inString = false;
+				}
+				continue;
+			}
+			if (c == '"') {
+				inString = true;
+			} else if (c == '/' && (a_json.substr(i, 2) == "//" || a_json.substr(i, 2) == "/*")) {
+				const auto end = nextToken(i);  // copy the comment through unchanged
+				out.append(a_json.substr(i, end - i));
+				i = end - 1;
+				continue;
+			} else if (c == ',') {
+				const auto next = nextToken(i + 1);
+				if (next < a_json.size() && (a_json[next] == ']' || a_json[next] == '}')) {
+					continue;
+				}
+			}
+			out += c;
+		}
+		return out;
+	}
+
 	// Whether two skill ids name the same skill. Papyrus strings are
 	// case-insensitive and the game keeps each one in the case it saw first, so
 	// an id can come back from the MCM as "Lolligagging" when CSF's display name

@@ -170,8 +170,22 @@ static void TestSameId()
 	CHECK(SameId("", ""));
 }
 
+static void TestStripTrailingCommas()
+{
+	CHECK(StripTrailingCommas(R"({"a": [1, 2]})") == R"({"a": [1, 2]})");  // valid JSON stays as it is
+	CHECK(StripTrailingCommas("[1, 2,]") == "[1, 2]");
+	CHECK(StripTrailingCommas("{\"a\": 1,\n  }") == "{\"a\": 1\n  }");
+	CHECK(StripTrailingCommas("[{\"x\": 1},\n      ]") == "[{\"x\": 1}\n      ]");  // as in skyrimacrobatics.json
+	CHECK(StripTrailingCommas("[1, // last\n]") == "[1 // last\n]");
+	CHECK(StripTrailingCommas("[1, /* last */ ]") == "[1 /* last */ ]");
+	CHECK(StripTrailingCommas(R"(["a,]", "b\",]"])") == R"(["a,]", "b\",]"])");  // commas inside strings stay
+	CHECK(StripTrailingCommas("[1, 2") == "[1, 2");                              // truncated input: left for the parser to reject
+	CHECK(StripTrailingCommas("") == "");
+}
+
 int main()
 {
+	TestStripTrailingCommas();
 	TestSameId();
 	TestIsMcmKey();
 	TestCapsCodec();
