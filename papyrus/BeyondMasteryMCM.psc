@@ -58,7 +58,7 @@ Event OnPageReset(string page)
 
 	SetCursorFillMode(TOP_TO_BOTTOM)
 	if skillIds.Length == 0
-		AddTextOption("No Custom Skills Framework skills found.", "")
+		AddTextOption("No custom skills found.", "")
 		return
 	endif
 

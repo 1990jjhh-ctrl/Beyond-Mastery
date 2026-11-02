@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <mutex>
 
 namespace BM::CustomSkills
@@ -61,9 +62,12 @@ namespace BM::CustomSkills
 
 		void ReadFile(const std::filesystem::path& a_path)
 		{
-			const auto    file = Narrow(a_path.filename());
-			std::ifstream in(a_path);
-			const auto    root = nlohmann::json::parse(in, nullptr, false);
+			const auto        file = Narrow(a_path.filename());
+			std::ifstream     in(a_path);
+			const std::string text{ std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>() };
+			// As lenient as CSF's own reader, which allows comments and trailing
+			// commas: a skill CSF loads must not be missing here.
+			const auto root = nlohmann::json::parse(CustomSkillsData::StripTrailingCommas(text), nullptr, false, true);
 			if (root.is_discarded() || !root.is_object()) {
 				logger::warn("CustomSkills/{} is not valid JSON, skipping it", file);
 				return;
