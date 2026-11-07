@@ -21,6 +21,71 @@ constexpr std::uint32_t kGatesVersion = 1;
 // Custom Skills Framework skills, by id (see CustomSkillsData::EncodeCaps).
 constexpr std::uint32_t kCustomCapsRecord = 'CCAP';
 constexpr std::uint32_t kCustomCapsVersion = 1;
+
+using Caps = std::array<std::uint16_t, Skills::kCount>;
+using Gates = std::array<std::uint8_t, Skills::kCount>;
+
+// Reads the CAPS record into a_caps. On a record it cannot use it logs and
+// leaves a_caps as it was, so the caps stay at 100.
+void LoadCapsRecord(SKSE::SerializationInterface* a_intfc, std::uint32_t a_version, std::uint32_t a_length, Caps& a_caps)
+{
+	if (a_version != kCapsVersion || a_length != sizeof(a_caps)) {
+		logger::error("CAPS record version {} / length {} unsupported, caps reset to 100", a_version, a_length);
+		return;
+	}
+	Caps caps{};
+	if (a_intfc->ReadRecordData(caps) != sizeof(caps)) {
+		logger::error("CAPS record truncated, caps reset to 100");
+		return;
+	}
+	for (std::size_t i = 0; i < caps.size(); ++i) {
+		// Caps are multiples of 10, at least 100 and at most
+		// kMaxPlausibleCap; anything else is damaged data, not a cap.
+		const auto c = caps[i];
+		a_caps[i] = Curves::IsPlausibleCap(c) ? c : State::kDefaultCap;
+	}
+}
+
+// Reads the GATE record into a_gates; whether it could.
+[[nodiscard]] bool LoadGatesRecord(SKSE::SerializationInterface* a_intfc, std::uint32_t a_version, std::uint32_t a_length, Gates& a_gates)
+{
+	if (a_version != kGatesVersion || a_length != sizeof(a_gates)) {
+		logger::error("GATE record version {} / length {} unsupported, gates derived from caps", a_version, a_length);
+		return false;
+	}
+	if (a_intfc->ReadRecordData(a_gates) != sizeof(a_gates)) {
+		logger::error("GATE record truncated, gates derived from caps");
+		return false;
+	}
+	return true;
+}
+
+// Reads the CCAP record into a_customCaps, under a_mutex. On a record it
+// cannot use it logs and leaves a_customCaps as it was.
+void LoadCustomCapsRecord(SKSE::SerializationInterface* a_intfc, std::uint32_t a_version, std::uint32_t a_length,
+	std::mutex& a_mutex, std::map<std::string, CustomSkillsData::CustomCap>& a_customCaps)
+{
+	if (a_version != kCustomCapsVersion) {
+		logger::error("CCAP record version {} unsupported, custom skill caps reset to 100", a_version);
+		return;
+	}
+	if (!CustomSkillsData::IsPlausibleCapsRecordLength(a_length)) {
+		logger::error("CCAP record damaged, custom skill caps reset to 100");
+		return;
+	}
+	std::vector<std::byte> bytes(a_length);
+	if (a_intfc->ReadRecordData(bytes.data(), a_length) != a_length) {
+		logger::error("CCAP record truncated, custom skill caps reset to 100");
+		return;
+	}
+	auto caps = CustomSkillsData::DecodeCaps(bytes);
+	if (!caps) {
+		logger::error("CCAP record damaged, custom skill caps reset to 100");
+		return;
+	}
+	const std::lock_guard lock(a_mutex);
+	a_customCaps = std::move(*caps);
+}
 }
 
 State& State::Get() noexcept
@@ -76,51 +141,11 @@ void State::OnLoad(SKSE::SerializationInterface* a_intfc)
 	std::uint32_t length = 0;
 	while (a_intfc->GetNextRecordInfo(type, version, length)) {
 		if (type == kCapsRecord) {
-			if (version != kCapsVersion || length != sizeof(state._caps)) {
-				logger::error("CAPS record version {} / length {} unsupported, caps reset to 100", version, length);
-				continue;
-			}
-			decltype(state._caps) caps{};
-			if (a_intfc->ReadRecordData(caps) != sizeof(caps)) {
-				logger::error("CAPS record truncated, caps reset to 100");
-				continue;
-			}
-			for (std::size_t i = 0; i < caps.size(); ++i) {
-				// Caps are multiples of 10, at least 100 and at most
-				// kMaxPlausibleCap; anything else is damaged data, not a cap.
-				const auto c = caps[i];
-				state._caps[i] = Curves::IsPlausibleCap(c) ? c : kDefaultCap;
-			}
+			LoadCapsRecord(a_intfc, version, length, state._caps);
 		} else if (type == kGatesRecord) {
-			if (version != kGatesVersion || length != sizeof(loadedGates)) {
-				logger::error("GATE record version {} / length {} unsupported, gates derived from caps", version, length);
-				continue;
-			}
-			if (a_intfc->ReadRecordData(loadedGates) != sizeof(loadedGates)) {
-				logger::error("GATE record truncated, gates derived from caps");
-				continue;
-			}
-			gatesLoaded = true;
+			gatesLoaded = LoadGatesRecord(a_intfc, version, length, loadedGates) || gatesLoaded;
 		} else if (type == kCustomCapsRecord) {
-			if (version != kCustomCapsVersion) {
-				logger::error("CCAP record version {} unsupported, custom skill caps reset to 100", version);
-				continue;
-			}
-			if (!CustomSkillsData::IsPlausibleCapsRecordLength(length)) {
-				logger::error("CCAP record damaged, custom skill caps reset to 100");
-				continue;
-			}
-			std::vector<std::byte> bytes(length);
-			if (a_intfc->ReadRecordData(bytes.data(), length) != length) {
-				logger::error("CCAP record truncated, custom skill caps reset to 100");
-				continue;
-			}
-			if (auto caps = CustomSkillsData::DecodeCaps(bytes)) {
-				const std::lock_guard lock(state._customMutex);
-				state._customCaps = std::move(*caps);
-			} else {
-				logger::error("CCAP record damaged, custom skill caps reset to 100");
-			}
+			LoadCustomCapsRecord(a_intfc, version, length, state._customMutex, state._customCaps);
 		} else {
 			logger::warn("Unknown co-save record {:08X}, skipped", type);
 		}
