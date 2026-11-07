@@ -1,6 +1,7 @@
-# Builds BeyondMastery.dll exactly as a developer does -- scripts/setup.sh, then
-# scripts/build.sh (tests and runtime-import gate included) -- and packages it
-# with scripts/package.py. Every run uploads the archives as a downloadable
+# Builds BeyondMastery.dll as a developer does -- the toolchain's setup (here
+# through its setup action), then scripts/build.sh (tests and runtime-import
+# gate included), the format check and lint -- and packages it with
+# scripts/package.py. Every run uploads the archives as a downloadable
 # artifact named after the git *tree* it built; a v* tag also publishes them as
 # a GitHub Release.
 #
@@ -11,21 +12,25 @@
 # Only artifacts from runs in this repository count (pushed by someone with
 # write access); a fork's pull request cannot plant one for a future tree.
 #
-# setup.sh downloads the MSVC CRT and Windows SDK with xwin, which accepts
-# Microsoft's license on the repository owner's behalf, as it does locally.
+# The toolchain's setup.sh downloads the MSVC CRT and Windows SDK with xwin,
+# which accepts Microsoft's license on the repository owner's behalf, as it
+# does locally.
 name: Build
 
 on:
   pull_request:
     paths:
       - "src/**"
-      - "cmake/**"
       - "CMakeLists.txt"
       - "CMakePresets.json"
       - "vcpkg*.json"
       - "lib/**"
       - "scripts/**"
       - "papyrus/**"
+      - "tests/**"
+      - ".clang-format"
+      - ".clang-tidy"
+      - ".gitmodules"
       - "LICENSE"
       - ".github/workflows/build.yml"
   # Pushes to master fill the caches every pull request can read: GitHub only
@@ -36,25 +41,22 @@ on:
     tags: ["v*"]
     paths:
       - "src/**"
-      - "cmake/**"
       - "CMakeLists.txt"
       - "CMakePresets.json"
       - "vcpkg*.json"
       - "lib/**"
       - "scripts/**"
       - "papyrus/**"
+      - "tests/**"
+      - ".clang-format"
+      - ".clang-tidy"
+      - ".gitmodules"
       - "LICENSE"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-
-env:
-  # clang 21 is what the project is developed with; CommonLibSSE-NG's toolchain
-  # file looks for plain clang-cl/lld-link/llvm-rc, so they are symlinked.
-  LLVM_VERSION: "21"
-  XWIN_VERSION: "0.10.0"  # as pinned in scripts/setup.sh
 
 jobs:
   prepare:
@@ -104,61 +106,21 @@ jobs:
         with:
           submodules: recursive
 
-      # Only what the build calls, without recommends: wine's recommends and the
-      # full LLVM suite from llvm.sh took 18 minutes. wine runs DirectXTK's
-      # shader compile (`wine cmd /c`), and only when vcpkg rebuilds DirectXTK.
-      - name: System tools (clang ${{ env.LLVM_VERSION }}, lld, llvm, ninja, wine)
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
-          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-$LLVM_VERSION main" \
-            | sudo tee /etc/apt/sources.list.d/llvm.list
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ninja-build wine wine64 \
-            "clang-$LLVM_VERSION" "lld-$LLVM_VERSION" "llvm-$LLVM_VERSION"
-          mkdir -p "$HOME/toolbin"
-          for t in clang-cl lld-link llvm-rc llvm-mt llvm-lib; do
-            if [ -x "/usr/bin/$t-$LLVM_VERSION" ]; then ln -sf "/usr/bin/$t-$LLVM_VERSION" "$HOME/toolbin/$t"; fi
-          done
-          echo "$HOME/toolbin" >> "$GITHUB_PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: xwin ${{ env.XWIN_VERSION }} (prebuilt, instead of cargo install)
-        run: |
-          mkdir -p "$HOME/.cargo/bin"
-          curl -fsSL "https://github.com/Jake-Shadle/xwin/releases/download/$XWIN_VERSION/xwin-$XWIN_VERSION-x86_64-unknown-linux-musl.tar.gz" \
-            | tar -xz --strip-components=1 -C "$HOME/.cargo/bin" "xwin-$XWIN_VERSION-x86_64-unknown-linux-musl/xwin"
-          xwin --version
-
-      - name: Cache the MSVC sysroot
-        uses: actions/cache@v4
+      - name: Set up the cross-compile toolchain
+        uses: ./lib/skyrim-mod-toolchain/.github/actions/setup
         with:
-          path: ~/xwin-out
-          key: xwin-${{ env.XWIN_VERSION }}-${{ hashFiles('scripts/setup.sh') }}
+          native-tests: "true"
 
-      - name: Cache llvm-mingw
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/opt/llvm-mingw
-          key: llvm-mingw-${{ hashFiles('scripts/setup.sh') }}
-
-      - name: Cache vcpkg binary packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/vcpkg/archives
-          key: vcpkg-clang${{ env.LLVM_VERSION }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**', 'lib/commonlibsse-ng/examples/linux-cross-compile/custom-ports/**') }}
-          restore-keys: vcpkg-clang${{ env.LLVM_VERSION }}-
-
-      - name: scripts/setup.sh
-        run: scripts/setup.sh
+      - name: Formatting (format.sh --check)
+        run: lib/skyrim-mod-toolchain/scripts/format.sh --check src tests
 
       - name: scripts/build.sh
-        run: |
-          export VCPKG_ROOT="$HOME/.local/share/vcpkg"
-          export XWIN_SYSROOT="$HOME/xwin-out"
-          export LLVM_MINGW_BIN="$HOME/.local/opt/llvm-mingw/bin"
-          export BM_REQUIRE_STUB_TESTS=1
-          scripts/build.sh
+        env:
+          BM_REQUIRE_STUB_TESTS: "1"
+        run: scripts/build.sh
+
+      - name: Lint (lint.sh)
+        run: lib/skyrim-mod-toolchain/scripts/lint.sh build/release src
 
       - name: scripts/package.py
         run: python3 scripts/package.py --out dist ${{ github.ref_type == 'tag' && format('--tag {0}', github.ref_name) || '' }}
