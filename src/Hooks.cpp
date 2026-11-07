@@ -192,66 +192,87 @@ bool InstallCapHook(std::uintptr_t a_siteAddress)
 }
 }
 
+namespace
+{
+using PlayerSkills = RE::PlayerCharacter::PlayerSkills;
+
+// Paid gates exist only at level 100 and above, so a skill below 100
+// that still holds some has been reset: it starts a new climb (FR-13).
+// This runs on every XP gain, including each level from 15 back up to
+// 100, so it catches a Legendary reset whenever it lands -- even if
+// vanilla applies it after Menu's own check -- and never fires when
+// Legendary declined, because then the level never dropped.
+void ClearLapsedGates(State& a_state, RE::ActorValue a_av, std::size_t a_index, RE::PlayerCharacter* a_player)
+{
+	if (a_state.GatesPaid(a_index) == 0) {
+		return;
+	}
+	if (a_player && a_player->AsActorValueOwner()->GetBaseActorValue(a_av) < 100.0f) {
+		a_state.ClearGates(a_index);
+	}
+}
+
+// FR-10: below 2^24 float XP accumulates exactly. Past it, say so
+// once per skill and session -- a double accumulator is deferred
+// until a reachable level needs it.
+void WarnIfThresholdPastFloat(RE::ActorValue a_av, std::size_t a_index, PlayerSkills* a_skills)
+{
+	static std::array<bool, Skills::kCount> warned{};
+	if (warned[a_index] || !a_skills || !a_skills->data) {
+		return;
+	}
+	const auto threshold = a_skills->data->skills[a_index].levelThreshold;
+	if (!Curves::ThresholdNeedsDouble(threshold)) {
+		return;
+	}
+	warned[a_index] = true;
+	const auto* info = RE::ActorValueList::GetActorValueInfo(a_av);
+	const auto* name = info ? info->GetFullName() : nullptr;
+	logger::warn(
+		"{} (skill {}) needs {} XP for its next level, past float precision (2^24); "
+		"XP gains may round (FR-10)",
+		name && *name ? name : "?", a_index, threshold);
+}
+
+// Character XP, logged when it changed since the previous skill XP
+// gain: the exact amount the last skill's level-ups were worth,
+// fXPPerSkillRank x each new level (x 100 with the FR-11 clamp).
+// The game shows character XP only as a bar, so this is how the
+// clamp is checked -- and only while it is on: otherwise it would
+// add a line per level-up to every player's log. Called on the main
+// thread for every skill XP gain, before that gain is added.
+void LogCharacterXP(RE::ActorValue a_av, RE::PlayerCharacter* a_player, PlayerSkills* a_skills)
+{
+	static float          lastCharXP = -1.0f;
+	static RE::ActorValue lastSkill = RE::ActorValue::kNone;
+	static float          lastLevel = 0.0f;
+	if (!Config::Get().clampCharXPAbove100 || !a_skills || !a_skills->data || !a_player) {
+		return;
+	}
+	const float charXP = a_skills->data->xp;
+	if (lastCharXP >= 0.0f && charXP != lastCharXP && Skills::IsSkill(lastSkill)) {
+		const auto* info = RE::ActorValueList::GetActorValueInfo(lastSkill);
+		const auto* name = info ? info->GetFullName() : nullptr;
+		logger::info("Character XP {} -> {} ({:+}) after {} {} -> {}", lastCharXP, charXP,
+			charXP - lastCharXP, name && *name ? name : "?", lastLevel,
+			a_player->AsActorValueOwner()->GetBaseActorValue(lastSkill));
+	}
+	lastCharXP = charXP;
+	lastSkill = a_av;
+	lastLevel = a_player->AsActorValueOwner()->GetBaseActorValue(a_av);
+}
+}
+
 float GetSkillCap(RE::ActorValue a_av) noexcept
 {
 	auto& state = State::Get();
-
-	// Paid gates exist only at level 100 and above, so a skill below 100
-	// that still holds some has been reset: it starts a new climb (FR-13).
-	// This runs on every XP gain, including each level from 15 back up to
-	// 100, so it catches a Legendary reset whenever it lands -- even if
-	// vanilla applies it after Menu's own check -- and never fires when
-	// Legendary declined, because then the level never dropped.
 	if (Skills::IsSkill(a_av)) {
 		const auto index = Skills::ToIndex(a_av);
 		auto*      player = RE::PlayerCharacter::GetSingleton();
-		if (state.GatesPaid(index) > 0) {
-			if (player && player->AsActorValueOwner()->GetBaseActorValue(a_av) < 100.0f) {
-				state.ClearGates(index);
-			}
-		}
-
-		// FR-10: below 2^24 float XP accumulates exactly. Past it, say so
-		// once per skill and session -- a double accumulator is deferred
-		// until a reachable level needs it.
-		static std::array<bool, Skills::kCount> warned{};
-		auto*                                   skills = player ? player->GetInfoRuntimeData().skills : nullptr;
-		if (!warned[index] && skills && skills->data) {
-			const auto threshold = skills->data->skills[index].levelThreshold;
-			if (Curves::ThresholdNeedsDouble(threshold)) {
-				warned[index] = true;
-				const auto* info = RE::ActorValueList::GetActorValueInfo(a_av);
-				const auto* name = info ? info->GetFullName() : nullptr;
-				logger::warn(
-					"{} (skill {}) needs {} XP for its next level, past float precision (2^24); "
-					"XP gains may round (FR-10)",
-					name && *name ? name : "?", index, threshold);
-			}
-		}
-
-		// Character XP, logged when it changed since the previous skill XP
-		// gain: the exact amount the last skill's level-ups were worth,
-		// fXPPerSkillRank x each new level (x 100 with the FR-11 clamp).
-		// The game shows character XP only as a bar, so this is how the
-		// clamp is checked -- and only while it is on: otherwise it would
-		// add a line per level-up to every player's log. Called on the main
-		// thread for every skill XP gain, before that gain is added.
-		static float          lastCharXP = -1.0f;
-		static RE::ActorValue lastSkill = RE::ActorValue::kNone;
-		static float          lastLevel = 0.0f;
-		if (Config::Get().clampCharXPAbove100 && skills && skills->data && player) {
-			const float charXP = skills->data->xp;
-			if (lastCharXP >= 0.0f && charXP != lastCharXP && Skills::IsSkill(lastSkill)) {
-				const auto* info = RE::ActorValueList::GetActorValueInfo(lastSkill);
-				const auto* name = info ? info->GetFullName() : nullptr;
-				logger::info("Character XP {} -> {} ({:+}) after {} {} -> {}", lastCharXP, charXP,
-					charXP - lastCharXP, name && *name ? name : "?", lastLevel,
-					player->AsActorValueOwner()->GetBaseActorValue(lastSkill));
-			}
-			lastCharXP = charXP;
-			lastSkill = a_av;
-			lastLevel = player->AsActorValueOwner()->GetBaseActorValue(a_av);
-		}
+		ClearLapsedGates(state, a_av, index, player);
+		auto* skills = player ? player->GetInfoRuntimeData().skills : nullptr;
+		WarnIfThresholdPastFloat(a_av, index, skills);
+		LogCharacterXP(a_av, player, skills);
 	}
 	return static_cast<float>(state.LimitOf(a_av));
 }
@@ -616,6 +637,25 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 	REL::safe_write(a_site, bytes.data(), a_length);
 }
 
+// Commits a_size executable bytes inside a_region when it is free and has
+// room for them, between a_at and a_highest; nullptr otherwise.
+[[nodiscard]] void* AllocateInFreeRegion(const REX::W32::MEMORY_BASIC_INFORMATION& a_region, std::uintptr_t a_at, std::size_t a_size,
+	std::uintptr_t a_highest, std::uintptr_t a_granularity) noexcept
+{
+	// The bare MEM_* and PAGE_* names: xbyak includes <windows.h>, whose
+	// macros of the same names break REX::W32's.
+	if (a_region.state != MEM_FREE) {
+		return nullptr;
+	}
+	const auto regionBase = reinterpret_cast<std::uintptr_t>(a_region.baseAddress);
+	const auto regionEnd = regionBase + a_region.regionSize;
+	const auto start = (((std::max)(a_at, regionBase)) + a_granularity - 1) / a_granularity * a_granularity;
+	if (start + a_size > regionEnd || start + a_size > a_highest) {
+		return nullptr;
+	}
+	return REX::W32::VirtualAlloc(reinterpret_cast<void*>(start), a_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+}
+
 // Commits a_size executable bytes within 1 GiB of a_near, so a rel32
 // from anywhere near a_near reaches every byte of it. nullptr if no
 // free region in that window can be allocated; never terminates.
@@ -639,16 +679,8 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 		}
 		const auto regionBase = reinterpret_cast<std::uintptr_t>(region.baseAddress);
 		const auto regionEnd = regionBase + region.regionSize;
-		// The bare MEM_* and PAGE_* names: xbyak includes <windows.h>, whose
-		// macros of the same names break REX::W32's.
-		if (region.state == MEM_FREE) {
-			const auto start = roundUp((std::max)(at, regionBase));
-			if (start + a_size <= regionEnd && start + a_size <= highest) {
-				if (auto* mem = REX::W32::VirtualAlloc(reinterpret_cast<void*>(start), a_size,
-						MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)) {
-					return mem;
-				}
-			}
+		if (auto* mem = AllocateInFreeRegion(region, at, a_size, highest, granularity)) {
+			return mem;
 		}
 		if (regionEnd <= at) {
 			return nullptr;  // no progress; never expected
@@ -793,6 +825,160 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 	}
 	return true;
 }
+
+// Checks one patch site and logs what was found. False when the site is
+// needed but not ready.
+[[nodiscard]] bool CheckSiteAndLog(const HookSites::Site& a_site)
+{
+	const auto checked = CheckDetailed(a_site);
+	const bool needed = SiteIsNeeded(a_site);
+
+	if (checked.status == SiteStatus::kReady) {
+		logger::info("Hook site {} resolved to {:#x}: {}{}", a_site.name, checked.address,
+			StatusName(checked.status), needed ? "" : " (not used by this build yet)");
+		return true;
+	}
+	if (checked.status == SiteStatus::kNotOnThisRuntime) {
+		// Expected, not a fault: the feature behind it is AE/1.7.x only
+		// and says so where it is installed.
+		logger::info("Hook site {}: not located on this runtime, skipped", a_site.name);
+		return true;
+	}
+	if (!needed) {
+		// Nothing is written here, so a mismatch is only worth knowing
+		// about, e.g. Experience's patch in the character-XP site.
+		logger::info("Hook site {} at {:#x}: {} -- not needed with this configuration, left alone",
+			a_site.name, checked.address, StatusName(checked.status));
+		return true;
+	}
+	logger::error("Hook site {} at {:#x}: {} -- not patching it", a_site.name,
+		checked.address, StatusName(checked.status));
+	if (checked.status == SiteStatus::kSignatureMismatch) {
+		g_signatureMismatch = true;
+	}
+	return false;
+}
+
+// Checks every patch site. False when a needed one is not ready.
+[[nodiscard]] bool CheckAllSites()
+{
+	bool allReady = true;
+	for (const auto* site : HookSites::kAllSites) {
+		allReady = CheckSiteAndLog(*site) && allReady;
+	}
+	return allReady;
+}
+
+void InstallCapHookIfWanted()
+{
+	// Cap enforcement (FR-2, FR-8). Only the AE/1.7.x form of this site is
+	// established: we disassembled 1.7.104 and know the skill is in esi and
+	// the cap belongs in xmm10. SE 1.5.97 arranges it differently (the cap
+	// lands in xmm6) and we have no 1.5.97 binary to confirm the register
+	// holding the skill, so that site is left alone rather than patched on
+	// a guess -- see the note on kGetSkillCap in HookSites.h.
+	const auto capStatus = CheckDetailed(HookSites::kGetSkillCap);
+	if (!UseAE()) {
+		logger::warn(
+			"Cap enforcement is not yet available on SE 1.5.97: the patch shape for "
+			"this runtime is unverified. Caps are stored and persist, but skills "
+			"still stop at 100.");
+	} else if (capStatus.status == SiteStatus::kReady) {
+		g_capHookInstalled = InstallCapHook(capStatus.address);
+	}
+}
+
+void InstallXPGainHookIfWanted()
+{
+	// Skill XP gain above 100 (FR-9). Off by default, where it is vanilla,
+	// so the hook is not installed at all: fewer hooks, fewer conflicts.
+	if (!Config::Get().scaleXPGainAbove100) {
+		logger::info("bScaleXPGainAbove100 is off, so the skill XP gain hook is not installed");
+	} else if (!UseAE()) {
+		logger::warn(
+			"The XP gain factor is not yet available on SE 1.5.97: that patch shape "
+			"is unverified.");
+	} else {
+		const auto xpSite = CheckDetailed(HookSites::kImprovePlayerSkillPoints);
+		if (xpSite.status == SiteStatus::kReady) {
+			g_xpGainHookInstalled = InstallXPGainHook(xpSite.address);
+		}
+	}
+}
+
+void InstallCharXPClampIfWanted()
+{
+	// Character XP clamp (FR-11). Off by default, where vanilla's unclamped
+	// formula is the requirement, so the hook is not installed at all.
+	if (!Config::Get().clampCharXPAbove100) {
+		logger::info("bClampCharXPAbove100 is off, so the character-XP clamp is not installed");
+	} else if (Compat::ExperienceLoaded()) {
+		// Experience owns character XP and patches inside this site.
+		logger::info("{} is loaded, so the character-XP clamp is not installed (FR-32)", Compat::kExperience);
+	} else if (UseAE()) {
+		const auto charXP = CheckDetailed(HookSites::kImproveLevelExpBySkillLevel);
+		if (charXP.status == SiteStatus::kReady) {
+			g_charXPClampInstalled = InstallCharXPClamp(charXP.address);
+		}
+	}
+}
+
+// The Legendary menu (FR-14). Only where the cap hook is in: Upgrade
+// raises a cap, and an unenforced cap would be a raise that does nothing.
+// False when it was attempted and failed.
+[[nodiscard]] bool InstallLegendaryIfWanted()
+{
+	if (!g_capHookInstalled) {
+		// Info, not a warning: why the cap hook is missing was logged above.
+		logger::info("Cap hook not installed, so the Legendary menu is not either; Legendary stays vanilla");
+		return true;
+	}
+	const auto a = CheckDetailed(HookSites::kLegendaryBoxA);
+	const auto b = CheckDetailed(HookSites::kLegendaryBoxB);
+	if (a.status != SiteStatus::kReady || b.status != SiteStatus::kReady) {
+		return true;
+	}
+	g_legendaryMenuInstalled = InstallLegendaryMenu(a.address, b.address);
+	return g_legendaryMenuInstalled;
+}
+
+// Formula scaling (FR-24 ... FR-29). Independent of the cap hook: a
+// Fortify effect can lift a skill past 100 without any raised cap.
+// False when it was attempted and failed.
+[[nodiscard]] bool InstallScalingIfWanted()
+{
+	if (!Config::Get().enableFormulaScaling) {
+		logger::info("bEnableFormulaScaling is off, so formula scaling is not installed");
+		return true;
+	}
+	if (!UseAE()) {
+		logger::info(
+			"Formula scaling is AE/1.7.x only (SE 1.5.97 is out of scope, PRD §3), so it is not "
+			"installed");
+		return true;
+	}
+	Scaling::CacheSettings();
+	g_scalingInstalled = InstallScaling();
+	return g_scalingInstalled;
+}
+
+// Custom Skills Framework's level limit (FR-35). Installed whenever CSF
+// is loaded, even with no skill enabled: the MCM enables skills at
+// runtime. This is the one exception to "no hook the configuration
+// makes a no-op"; LevelLimit returns CSF's 100 for a disabled skill.
+// False when it failed while a skill is enabled.
+[[nodiscard]] bool InstallCustomSkillsIfLoaded()
+{
+	if (!Compat::CustomSkillsLoaded()) {
+		logger::info("{} is not loaded, so its level limit is not patched", Compat::kCustomSkills);
+		return true;
+	}
+	g_customSkillsInstalled = InstallCustomSkills();
+	if (g_customSkillsInstalled) {
+		logger::info("{}'s level limit is patched; disabled skills keep its 100", Compat::kCustomSkills);
+	}
+	return g_customSkillsInstalled || !CustomSkills::AnyEnabled();
+}
 }
 
 bool InstallAll()
@@ -815,119 +1001,13 @@ bool InstallAll()
 		return false;
 	}
 
-	bool allReady = true;
-	for (const auto* site : HookSites::kAllSites) {
-		const auto checked = CheckDetailed(*site);
-		const bool needed = SiteIsNeeded(*site);
-
-		if (checked.status == SiteStatus::kReady) {
-			logger::info("Hook site {} resolved to {:#x}: {}{}", site->name, checked.address,
-				StatusName(checked.status), needed ? "" : " (not used by this build yet)");
-		} else if (checked.status == SiteStatus::kNotOnThisRuntime) {
-			// Expected, not a fault: the feature behind it is AE/1.7.x only
-			// and says so where it is installed.
-			logger::info("Hook site {}: not located on this runtime, skipped", site->name);
-		} else if (needed) {
-			logger::error("Hook site {} at {:#x}: {} -- not patching it", site->name,
-				checked.address, StatusName(checked.status));
-			allReady = false;
-			if (checked.status == SiteStatus::kSignatureMismatch) {
-				g_signatureMismatch = true;
-			}
-		} else {
-			// Nothing is written here, so a mismatch is only worth knowing
-			// about, e.g. Experience's patch in the character-XP site.
-			logger::info("Hook site {} at {:#x}: {} -- not needed with this configuration, left alone",
-				site->name, checked.address, StatusName(checked.status));
-		}
-	}
-
-	// Cap enforcement (FR-2, FR-8). Only the AE/1.7.x form of this site is
-	// established: we disassembled 1.7.104 and know the skill is in esi and
-	// the cap belongs in xmm10. SE 1.5.97 arranges it differently (the cap
-	// lands in xmm6) and we have no 1.5.97 binary to confirm the register
-	// holding the skill, so that site is left alone rather than patched on
-	// a guess -- see the note on kGetSkillCap in HookSites.h.
-	const auto capStatus = CheckDetailed(HookSites::kGetSkillCap);
-	if (!UseAE()) {
-		logger::warn(
-			"Cap enforcement is not yet available on SE 1.5.97: the patch shape for "
-			"this runtime is unverified. Caps are stored and persist, but skills "
-			"still stop at 100.");
-	} else if (capStatus.status == SiteStatus::kReady) {
-		g_capHookInstalled = InstallCapHook(capStatus.address);
-	}
-
-	// Skill XP gain above 100 (FR-9). Off by default, where it is vanilla,
-	// so the hook is not installed at all: fewer hooks, fewer conflicts.
-	if (!Config::Get().scaleXPGainAbove100) {
-		logger::info("bScaleXPGainAbove100 is off, so the skill XP gain hook is not installed");
-	} else if (!UseAE()) {
-		logger::warn(
-			"The XP gain factor is not yet available on SE 1.5.97: that patch shape "
-			"is unverified.");
-	} else {
-		const auto xpSite = CheckDetailed(HookSites::kImprovePlayerSkillPoints);
-		if (xpSite.status == SiteStatus::kReady) {
-			g_xpGainHookInstalled = InstallXPGainHook(xpSite.address);
-		}
-	}
-
-	// Character XP clamp (FR-11). Off by default, where vanilla's unclamped
-	// formula is the requirement, so the hook is not installed at all.
-	if (!Config::Get().clampCharXPAbove100) {
-		logger::info("bClampCharXPAbove100 is off, so the character-XP clamp is not installed");
-	} else if (Compat::ExperienceLoaded()) {
-		// Experience owns character XP and patches inside this site.
-		logger::info("{} is loaded, so the character-XP clamp is not installed (FR-32)", Compat::kExperience);
-	} else if (UseAE()) {
-		const auto charXP = CheckDetailed(HookSites::kImproveLevelExpBySkillLevel);
-		if (charXP.status == SiteStatus::kReady) {
-			g_charXPClampInstalled = InstallCharXPClamp(charXP.address);
-		}
-	}
-
-	// The Legendary menu (FR-14). Only where the cap hook is in: Upgrade
-	// raises a cap, and an unenforced cap would be a raise that does nothing.
-	if (g_capHookInstalled) {
-		const auto a = CheckDetailed(HookSites::kLegendaryBoxA);
-		const auto b = CheckDetailed(HookSites::kLegendaryBoxB);
-		if (a.status == SiteStatus::kReady && b.status == SiteStatus::kReady) {
-			g_legendaryMenuInstalled = InstallLegendaryMenu(a.address, b.address);
-			allReady = allReady && g_legendaryMenuInstalled;
-		}
-	} else {
-		// Info, not a warning: why the cap hook is missing was logged above.
-		logger::info("Cap hook not installed, so the Legendary menu is not either; Legendary stays vanilla");
-	}
-
-	// Formula scaling (FR-24 ... FR-29). Independent of the cap hook: a
-	// Fortify effect can lift a skill past 100 without any raised cap.
-	if (!Config::Get().enableFormulaScaling) {
-		logger::info("bEnableFormulaScaling is off, so formula scaling is not installed");
-	} else if (!UseAE()) {
-		logger::info(
-			"Formula scaling is AE/1.7.x only (SE 1.5.97 is out of scope, PRD §3), so it is not "
-			"installed");
-	} else {
-		Scaling::CacheSettings();
-		g_scalingInstalled = InstallScaling();
-		allReady = allReady && g_scalingInstalled;
-	}
-
-	// Custom Skills Framework's level limit (FR-35). Installed whenever CSF
-	// is loaded, even with no skill enabled: the MCM enables skills at
-	// runtime. This is the one exception to "no hook the configuration
-	// makes a no-op"; LevelLimit returns CSF's 100 for a disabled skill.
-	if (!Compat::CustomSkillsLoaded()) {
-		logger::info("{} is not loaded, so its level limit is not patched", Compat::kCustomSkills);
-	} else {
-		g_customSkillsInstalled = InstallCustomSkills();
-		allReady = allReady && (g_customSkillsInstalled || !CustomSkills::AnyEnabled());
-		if (g_customSkillsInstalled) {
-			logger::info("{}'s level limit is patched; disabled skills keep its 100", Compat::kCustomSkills);
-		}
-	}
+	bool allReady = CheckAllSites();
+	InstallCapHookIfWanted();
+	InstallXPGainHookIfWanted();
+	InstallCharXPClampIfWanted();
+	allReady = InstallLegendaryIfWanted() && allReady;
+	allReady = InstallScalingIfWanted() && allReady;
+	allReady = InstallCustomSkillsIfLoaded() && allReady;
 
 	logger::info(
 		"Hook sites checked, {}; cap hook {}; skill XP gain hook {}; character-XP clamp {}; Legendary menu {}; "
