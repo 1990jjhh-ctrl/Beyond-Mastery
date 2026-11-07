@@ -33,6 +33,35 @@ struct Scan
 	return a_soul == RE::SOUL_LEVEL::kGrand;
 }
 
+// Scans the stacks of a_gem that carry their own extra data (a trapped soul
+// lives there), adding the filled black ones to a_scan. Returns how many
+// copies those stacks hold.
+std::int32_t ScanExtraLists(RE::TESSoulGem& a_gem, RE::InventoryEntryData& a_entry, bool a_isBlackStar, Scan& a_scan)
+{
+	std::int32_t inExtra = 0;
+	if (!a_entry.extraLists) {
+		return inExtra;
+	}
+	for (auto* xList : *a_entry.extraLists) {
+		if (!xList) {
+			continue;
+		}
+		const auto count = xList->GetCount();
+		inExtra += count;
+		const auto* soul = xList->GetByType<RE::ExtraSoul>();
+		if (!IsFilledBlack(soul ? soul->GetContainedSoul() : a_gem.GetContainedSoul())) {
+			continue;
+		}
+		if (a_isBlackStar) {
+			a_scan.blackStar = xList;
+			continue;
+		}
+		a_scan.consumable.push_back({ &a_gem, xList, count });
+		a_scan.consumableCount += static_cast<std::uint32_t>(count);
+	}
+	return inExtra;
+}
+
 [[nodiscard]] Scan ScanBlackGems(RE::PlayerCharacter* a_player)
 {
 	Scan scan;
@@ -45,26 +74,7 @@ struct Scan
 		const bool isBlackStar = gem->GetFormID() == kBlackStar;
 
 		// Stacks with their own extra data: a trapped soul lives here.
-		std::int32_t inExtra = 0;
-		if (entry && entry->extraLists) {
-			for (auto* xList : *entry->extraLists) {
-				if (!xList) {
-					continue;
-				}
-				const auto count = xList->GetCount();
-				inExtra += count;
-				const auto* soul = xList->GetByType<RE::ExtraSoul>();
-				if (!IsFilledBlack(soul ? soul->GetContainedSoul() : gem->GetContainedSoul())) {
-					continue;
-				}
-				if (isBlackStar) {
-					scan.blackStar = xList;
-				} else {
-					scan.consumable.push_back({ gem, xList, count });
-					scan.consumableCount += static_cast<std::uint32_t>(count);
-				}
-			}
-		}
+		const std::int32_t inExtra = entry ? ScanExtraLists(*gem, *entry, isBlackStar, scan) : 0;
 
 		// The remaining copies carry the base form's soul, which is how
 		// SoulGemBlackFilled comes prefilled. The Black Star's base soul
