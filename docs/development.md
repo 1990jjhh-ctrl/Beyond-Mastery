@@ -16,9 +16,9 @@ Every change goes through a branch and a pull request; nothing is committed to `
 1. **Branch** from `master`, named after the change's type: `feat/…`, `fix/…`, `docs/…`, `ci/…`.
 2. **Commit** with [Conventional Commits](https://www.conventionalcommits.org) titles. The exact rules (types, line lengths) are in `.gitlint`. Run `gitlint install-hook` once per clone, so a bad message is rejected when you commit rather than in CI.
 3. **Open a pull request** with `gh pr create`. Its title follows the same format, because a squash merge uses it as the commit title.
-4. **CI** must pass before merging. `.github/workflows/ci.yml` lints the commit messages and the PR title, runs `scripts/test.sh` (stub tests required), and checks formatting with `scripts/format.sh --check`. Tool versions are pinned there to match the local ones.
+4. **CI** must pass before merging. `.github/workflows/ci.yml` lints the commit messages and the PR title, and runs `scripts/test.sh` (stub tests required). Tool versions are pinned there to match the local ones.
 
-`.github/workflows/build.yml` builds the DLL on pull requests and pushes to `master` that touch build inputs. It runs `scripts/setup.sh`, `scripts/build.sh` and `scripts/package.py` exactly as a developer does, and uploads the release archives as an artifact of the run. Its header explains the caching and how a tag reuses an earlier build. CI cannot run the game, so the in-game check stays part of every change that touches the plugin.
+`.github/workflows/build.yml` builds the DLL on pull requests and pushes to `master` that touch build inputs. It installs the toolchain through the [setup action](../lib/skyrim-mod-toolchain/.github/actions/setup/action.yml), then runs `scripts/build.sh`, the format check, lint and `scripts/package.py` as a developer does, and uploads the release archives as an artifact of the run. Its header explains how a tag reuses an earlier build; caching is done by the setup action. CI cannot run the game, so the in-game check stays part of every change that touches the plugin.
 
 ## Releasing
 
@@ -34,16 +34,19 @@ The version is `VERSION` in `CMakeLists.txt`'s `project()` call, and nowhere els
 
 Development happens on a Linux host. The DLL is cross-compiled with clang-cl and lld-link against an xwin MSVC sysroot.
 
+The tools, CommonLibSSE-NG and the vcpkg ports come from the [skyrim-mod-toolchain](../lib/skyrim-mod-toolchain/README.md) submodule (`git submodule update --init --recursive`). Its README explains [how a project uses it](../lib/skyrim-mod-toolchain/README.md#use-it-in-a-project).
+
 ```bash
-scripts/setup.sh    # one-time: tools, CommonLibSSE-NG submodule, llvm-mingw, xwin sysroot, vcpkg
-scripts/test.sh     # native tests only: fast, no cross-compiler needed
-scripts/build.sh    # configure, run test.sh, build BeyondMastery.dll, check its runtime imports
-scripts/format.sh   # clang-format in place; --check only reports (also VS Code tasks "format: check/fix")
+lib/skyrim-mod-toolchain/scripts/setup.sh                 # one-time toolchain setup (see its README above)
+scripts/test.sh                                           # native tests only: fast, no cross-compiler needed
+scripts/build.sh                                          # configure, run test.sh, build BeyondMastery.dll, check its runtime imports
+lib/skyrim-mod-toolchain/scripts/format.sh src tests      # clang-format in place; --check only reports (also VS Code tasks "format: check/fix")
+lib/skyrim-mod-toolchain/scripts/lint.sh build/release src  # clang-tidy against the build's compile database
 ```
 
 `setup.sh` prints the environment variables `build.sh` needs; export them, since new shells don't inherit them. The first build compiles CommonLibSSE-NG and every vcpkg port and takes a long time; later builds are incremental in `build/release/`.
 
-The plugin links the C++ runtime statically. Don't switch it back to the dynamic runtime: `scripts/check_runtime_deps.py` explains why and fails the build if it happens.
+The plugin links the C++ runtime statically. Don't switch it back to the dynamic runtime: [`check_runtime_deps.py`](../lib/skyrim-mod-toolchain/scripts/check_runtime_deps.py) explains why and fails the build if it happens.
 
 The MCM's Papyrus scripts in `papyrus/` are compiled locally and the `.pex` files are committed in `papyrus/compiled/`, because CI can't run the Creation Kit's compiler. After changing a `.psc`, run `scripts/papyrus.sh` and commit the result:
 
@@ -81,8 +84,8 @@ Each source file starts with a comment describing it. As a map:
 | `src/Compat.*` | Plugins Beyond Mastery adapts to (Experience, Custom Skills Framework) |
 | `src/Skills.h`, `src/Config.*`, `src/main.cpp` | Skill mapping, INI settings, entry point |
 | `papyrus/` | The MCM's Papyrus sources and, in `compiled/`, the committed `.pex`; `scripts/make_esp.py` generates its ESL plugin |
-| `tests/`, `scripts/` | Tests; setup, build, packaging and verification scripts |
-| `lib/commonlibsse-ng` | CommonLibSSE-NG submodule |
+| `tests/`, `scripts/` | Tests; build, packaging and verification scripts |
+| `lib/skyrim-mod-toolchain` | Submodule: setup, format and lint scripts, the CI setup action, and CommonLibSSE-NG |
 
 ## Rules for code
 
