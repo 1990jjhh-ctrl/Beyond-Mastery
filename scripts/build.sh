@@ -19,7 +19,7 @@ DLL="build/release/BeyondMastery.dll"
 
 # The plugin must not depend on the player's C++ runtime; fail the build if a
 # dependency or a preset change brings the dynamic CRT back.
-python3 "$ROOT/scripts/check_runtime_deps.py" "$DLL"
+python3 "$ROOT/lib/skyrim-mod-toolchain/scripts/check_runtime_deps.py" "$DLL"
 
 file "$DLL"
 echo "Built $DLL"
