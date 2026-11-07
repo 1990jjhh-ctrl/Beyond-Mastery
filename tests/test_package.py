@@ -175,7 +175,7 @@ class TestThirdPartyNotices(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_every_port_with_a_license_is_included(self):
-        text = pkg.third_party_notices(self.share, ROOT / "lib" / "commonlibsse-ng").decode()
+        text = pkg.third_party_notices(self.share, ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng").decode()
         self.assertIn("spdlog", text)
         self.assertIn("MIT spdlog notice", text)
         self.assertIn("BSD xbyak notice", text)
@@ -183,21 +183,21 @@ class TestThirdPartyNotices(unittest.TestCase):
 
     def test_commonlibsse_ng_notices_are_included(self):
         # The original CommonLibSSE (MIT) and the bundled hde64 disassembler.
-        text = pkg.third_party_notices(self.share, ROOT / "lib" / "commonlibsse-ng").decode()
+        text = pkg.third_party_notices(self.share, ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng").decode()
         self.assertIn("CommonLibSSE-NG", text)
-        mit = (ROOT / "lib" / "commonlibsse-ng" / "licenses" / "LICENSE-MIT.txt").read_text()
-        hde = (ROOT / "lib" / "commonlibsse-ng" / "licenses" / "LICENSE-hde64.txt").read_text()
+        mit = (ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng" / "licenses" / "LICENSE-MIT.txt").read_text()
+        hde = (ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng" / "licenses" / "LICENSE-hde64.txt").read_text()
         self.assertIn(mit.strip(), text)
         self.assertIn(hde.strip(), text)
 
     def test_ports_appear_in_a_stable_order(self):
-        text = pkg.third_party_notices(self.share, ROOT / "lib" / "commonlibsse-ng").decode()
+        text = pkg.third_party_notices(self.share, ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng").decode()
         self.assertLess(text.index("spdlog"), text.index("xbyak"))
 
     def test_no_ports_is_refused(self):
         # Packaging without a build would silently ship no notices.
         with self.assertRaises(SystemExit):
-            pkg.third_party_notices(pathlib.Path(self.tmp.name) / "missing", ROOT / "lib" / "commonlibsse-ng")
+            pkg.third_party_notices(pathlib.Path(self.tmp.name) / "missing", ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng")
 
 
 if __name__ == "__main__":

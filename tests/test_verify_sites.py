@@ -12,7 +12,7 @@ import sys
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-REL = ROOT / "lib" / "commonlibsse-ng" / "tests" / "REL"
+REL = ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng" / "tests" / "REL"
 SKYRIM_EXE = pathlib.Path(
     os.environ.get(
         "SKYRIM_EXE",

@@ -144,7 +144,7 @@ def main(argv=None) -> int:
     if args.check_only:
         print(f"package: version {version}" + (f", tag {args.tag} matches" if args.tag else ""))
         return 0
-    notices = third_party_notices(args.vcpkg_share, ROOT / "lib" / "commonlibsse-ng")
+    notices = third_party_notices(args.vcpkg_share, ROOT / "lib" / "skyrim-mod-toolchain" / "lib" / "commonlibsse-ng")
     for path in build_archives(args.dll, version, args.out, ROOT, notices):
         print(f"package: {path} ({path.stat().st_size} bytes)")
     return 0

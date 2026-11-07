@@ -23,14 +23,7 @@ set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SKSE_SUPPORT_XBYAK ON CACHE BOOL "" FORCE)  # trampolines with custom asm for the hooks
 
-add_subdirectory(lib/commonlibsse-ng EXCLUDE_FROM_ALL)
-
-# add_commonlibsse_plugin() lives in the submodule's cmake/CommonLibSSE.cmake. When
-# CommonLibSSE is built from source (our case) its CMakeLists only includes that file
-# on the prebuilt-binary path, so consumers must include it themselves. Same pattern as
-# the submodule's own test_consumer_live/CMakeLists.txt.
-get_target_property(COMMONLIB_SRC_DIR CommonLibSSE SOURCE_DIR)
-include("${COMMONLIB_SRC_DIR}/cmake/CommonLibSSE.cmake")
+include(lib/skyrim-mod-toolchain/cmake/commonlibsse.cmake)
 
 find_path(SIMPLEINI_INCLUDE_DIRS "SimpleIni.h" REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
