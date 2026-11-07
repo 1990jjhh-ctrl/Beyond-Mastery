@@ -5,6 +5,6 @@
 
 namespace BM::Papyrus
 {
-	// Registers every native; the callback for SKSE's Papyrus interface.
-	bool Register(RE::BSScript::IVirtualMachine* a_vm);
+// Registers every native; the callback for SKSE's Papyrus interface.
+bool Register(RE::BSScript::IVirtualMachine* a_vm);
 }
