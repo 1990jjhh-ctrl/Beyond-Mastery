@@ -92,6 +92,51 @@ namespace detail
 	return FormRef{ std::string(a_text.substr(0, bar)), value };
 }
 
+// Index of the first character at or after a_from that is neither whitespace
+// nor part of a comment.
+[[nodiscard]] inline std::size_t NextJsonToken(std::string_view a_json, std::size_t a_from)
+{
+	std::size_t i = a_from;
+	while (i < a_json.size()) {
+		if (std::isspace(static_cast<unsigned char>(a_json[i]))) {
+			++i;
+			continue;
+		}
+		const bool lineComment = a_json.substr(i, 2) == "//";
+		if (!lineComment && a_json.substr(i, 2) != "/*") {
+			break;
+		}
+		const auto end = lineComment ? a_json.find('\n', i) : a_json.find("*/", i + 2);
+		i = end == std::string_view::npos ? a_json.size() : end + (lineComment ? 1 : 2);
+	}
+	return i;
+}
+
+// Whether the comma at a_comma is followed, past whitespace and comments, by
+// a closing ] or }.
+[[nodiscard]] inline bool IsTrailingComma(std::string_view a_json, std::size_t a_comma)
+{
+	const auto next = NextJsonToken(a_json, a_comma + 1);
+	return next < a_json.size() && (a_json[next] == ']' || a_json[next] == '}');
+}
+
+// Copies the character at a_i of a string literal to a_out, with its escaped
+// character if it is a backslash, and clears a_inString at the closing quote.
+// Returns the index of the last character consumed.
+inline std::size_t CopyStringChar(std::string_view a_json, std::size_t a_i, std::string& a_out, bool& a_inString)
+{
+	const char c = a_json[a_i];
+	a_out += c;
+	if (c == '\\' && a_i + 1 < a_json.size()) {
+		a_out += a_json[a_i + 1];
+		return a_i + 1;
+	}
+	if (c == '"') {
+		a_inString = false;
+	}
+	return a_i;
+}
+
 // CSF's JSON files with trailing commas removed. CSF's own reader accepts a
 // comma before ] or } (skyrimacrobatics.json has one) and nlohmann-json
 // doesn't, so without this a skill CSF loads would be missing here.
@@ -99,52 +144,26 @@ namespace detail
 // are looked past and kept, for the parser to skip.
 [[nodiscard]] inline std::string StripTrailingCommas(std::string_view a_json)
 {
-	// Index of the first character after a_from that is neither whitespace
-	// nor part of a comment.
-	const auto nextToken = [&](std::size_t a_from) {
-		std::size_t i = a_from;
-		while (i < a_json.size()) {
-			if (std::isspace(static_cast<unsigned char>(a_json[i]))) {
-				++i;
-			} else if (a_json.substr(i, 2) == "//") {
-				const auto end = a_json.find('\n', i);
-				i = end == std::string_view::npos ? a_json.size() : end + 1;
-			} else if (a_json.substr(i, 2) == "/*") {
-				const auto end = a_json.find("*/", i + 2);
-				i = end == std::string_view::npos ? a_json.size() : end + 2;
-			} else {
-				break;
-			}
-		}
-		return i;
-	};
-
 	std::string out;
 	out.reserve(a_json.size());
 	bool inString = false;
 	for (std::size_t i = 0; i < a_json.size(); ++i) {
 		const char c = a_json[i];
 		if (inString) {
-			out += c;
-			if (c == '\\' && i + 1 < a_json.size()) {
-				out += a_json[++i];
-			} else if (c == '"') {
-				inString = false;
-			}
+			i = CopyStringChar(a_json, i, out, inString);
+			continue;
+		}
+		if (c == '/' && (a_json.substr(i, 2) == "//" || a_json.substr(i, 2) == "/*")) {
+			const auto end = NextJsonToken(a_json, i);  // copy the comment through unchanged
+			out.append(a_json.substr(i, end - i));
+			i = end - 1;
+			continue;
+		}
+		if (c == ',' && IsTrailingComma(a_json, i)) {
 			continue;
 		}
 		if (c == '"') {
 			inString = true;
-		} else if (c == '/' && (a_json.substr(i, 2) == "//" || a_json.substr(i, 2) == "/*")) {
-			const auto end = nextToken(i);  // copy the comment through unchanged
-			out.append(a_json.substr(i, end - i));
-			i = end - 1;
-			continue;
-		} else if (c == ',') {
-			const auto next = nextToken(i + 1);
-			if (next < a_json.size() && (a_json[next] == ']' || a_json[next] == '}')) {
-				continue;
-			}
 		}
 		out += c;
 	}
@@ -208,12 +227,13 @@ namespace detail
 {
 	std::optional<std::size_t> found;
 	for (std::size_t i = 0; i < a_names.size(); ++i) {
-		if (a_names[i] == a_name) {
-			if (found) {
-				return std::nullopt;
-			}
-			found = i;
+		if (a_names[i] != a_name) {
+			continue;
 		}
+		if (found) {
+			return std::nullopt;
+		}
+		found = i;
 	}
 	return found;
 }
