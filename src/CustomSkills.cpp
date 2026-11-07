@@ -125,6 +125,31 @@ std::string Translated(const std::string& a_name)
 	std::string out;
 	return SKSE::Translation::Translate(a_name, out) ? out : a_name;
 }
+
+// Appends a_entry to a_files when it is a regular file with a JSON name.
+void AppendIfJson(const std::filesystem::directory_entry& a_entry, std::vector<std::filesystem::path>& a_files)
+{
+	std::error_code typeEc;
+	if (a_entry.is_regular_file(typeEc) && IsJson(a_entry.path())) {
+		a_files.push_back(a_entry.path());
+	}
+}
+
+// Appends the JSON files in kDir to a_files, sorted. Never throws; on an error
+// a_files keeps what was listed so far.
+void ListJsonFiles(std::vector<std::filesystem::path>& a_files)
+{
+	try {
+		std::error_code                     ec;
+		std::filesystem::directory_iterator it(kDir, ec);
+		for (; !ec && it != std::filesystem::directory_iterator{}; it.increment(ec)) {
+			AppendIfJson(*it, a_files);
+		}
+		std::ranges::sort(a_files);
+	} catch (const std::exception& e) {
+		logger::warn("Could not list {}: {}", kDir, e.what());
+	}
+}
 }
 
 void Discover()
@@ -132,19 +157,7 @@ void Discover()
 	g_skills.clear();
 	// Runs in SKSEPlugin_Load: nothing here may throw.
 	std::vector<std::filesystem::path> files;
-	try {
-		std::error_code                     ec;
-		std::filesystem::directory_iterator it(kDir, ec);
-		for (; !ec && it != std::filesystem::directory_iterator{}; it.increment(ec)) {
-			std::error_code typeEc;
-			if (it->is_regular_file(typeEc) && IsJson(it->path())) {
-				files.push_back(it->path());
-			}
-		}
-		std::ranges::sort(files);
-	} catch (const std::exception& e) {
-		logger::warn("Could not list {}: {}", kDir, e.what());
-	}
+	ListJsonFiles(files);
 	for (const auto& f : files) {
 		try {
 			ReadFile(f);
@@ -233,6 +246,23 @@ void ApplySettings(Skill& a_skill, CustomSkillsData::Settings a_settings)
 	a_skill.settings = std::move(a_settings);
 }
 
+// As Hooks::GetSkillCap does for the vanilla skills: paid gates exist
+// only at 100 and above, so a skill below 100 that still holds some
+// has been reset and starts a new climb (FR-13). CSF calls this on
+// every XP gain, so the reset is caught whenever it lands, and never
+// after a declined Legendary, because then the level never dropped.
+// Cleared for a disabled skill too: re-enabled at 100, it must pay
+// its gates again rather than climb on to its old limit.
+static void ClearGatesBelowVanillaCap(State& a_state, const Skill& a_skill, float a_level)
+{
+	if (!(a_level < Curves::kVanillaCap)) {
+		return;
+	}
+	if (const auto cleared = a_state.ClearCustomGates(a_skill.id); cleared > 0) {
+		logger::info("Custom skill {} below 100: its {} paid gate(s) are owed again", a_skill.id, cleared);
+	}
+}
+
 std::int32_t LevelLimit(const RE::TESGlobal* a_level) noexcept
 {
 	constexpr std::int32_t kVanilla = State::kDefaultCap;  // CSF's own limit
@@ -241,19 +271,8 @@ std::int32_t LevelLimit(const RE::TESGlobal* a_level) noexcept
 		if (!skill) {
 			return kVanilla;
 		}
-		// As Hooks::GetSkillCap does for the vanilla skills: paid gates exist
-		// only at 100 and above, so a skill below 100 that still holds some
-		// has been reset and starts a new climb (FR-13). CSF calls this on
-		// every XP gain, so the reset is caught whenever it lands, and never
-		// after a declined Legendary, because then the level never dropped.
-		// Cleared for a disabled skill too: re-enabled at 100, it must pay
-		// its gates again rather than climb on to its old limit.
 		auto& state = State::Get();
-		if (a_level->value < Curves::kVanillaCap) {
-			if (const auto cleared = state.ClearCustomGates(skill->id); cleared > 0) {
-				logger::info("Custom skill {} below 100: its {} paid gate(s) are owed again", skill->id, cleared);
-			}
-		}
+		ClearGatesBelowVanillaCap(state, *skill, a_level->value);
 		return IsEnabled(*skill) ? state.CustomLimitOf(skill->id) : kVanilla;
 	} catch (...) {
 		return kVanilla;  // State builds a std::string key and locks a mutex, both of which can throw
