@@ -5,8 +5,8 @@
 			"label": "format: check",
 			"detail": "Report clang-format violations without changing anything",
 			"type": "shell",
-			"command": "${workspaceFolder}/scripts/format.sh",
-			"args": ["--check"],
+			"command": "${workspaceFolder}/lib/skyrim-mod-toolchain/scripts/format.sh",
+			"args": ["--check", "src", "tests"],
 			"options": { "cwd": "${workspaceFolder}" },
 			"presentation": { "reveal": "always", "clear": true },
 			"problemMatcher": {
@@ -26,10 +26,32 @@
 			"label": "format: fix",
 			"detail": "Format src/ and tests/ in place",
 			"type": "shell",
-			"command": "${workspaceFolder}/scripts/format.sh",
+			"command": "${workspaceFolder}/lib/skyrim-mod-toolchain/scripts/format.sh",
+			"args": ["src", "tests"],
 			"options": { "cwd": "${workspaceFolder}" },
 			"presentation": { "reveal": "always", "clear": true },
 			"problemMatcher": []
+		},
+		{
+			"label": "lint",
+			"detail": "Run clang-tidy over src/ (needs the build/release configure)",
+			"type": "shell",
+			"command": "${workspaceFolder}/lib/skyrim-mod-toolchain/scripts/lint.sh",
+			"args": ["build/release", "src"],
+			"options": { "cwd": "${workspaceFolder}" },
+			"presentation": { "reveal": "always", "clear": true },
+			"problemMatcher": {
+				"owner": "clang-tidy",
+				"fileLocation": ["relative", "${workspaceFolder}"],
+				"pattern": {
+					"regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+					"file": 1,
+					"line": 2,
+					"column": 3,
+					"severity": 4,
+					"message": 5
+				}
+			}
 		}
 	]
 }
