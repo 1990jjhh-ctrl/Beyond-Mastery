@@ -39,45 +39,45 @@ static int g_failures = 0;
 
 namespace
 {
-	constexpr std::uintptr_t kFakeCallee = 0x0000'7FFF'1234'5678ull;
+constexpr std::uintptr_t kFakeCallee = 0x0000'7FFF'1234'5678ull;
 
-	template <class Stub>
-	std::vector<std::uint8_t> Emit()
-	{
-		Stub code{ kFakeCallee };
-		code.ready();
-		const auto* p = code.getCode();
-		return { p, p + code.getSize() };
+template <class Stub>
+std::vector<std::uint8_t> Emit()
+{
+	Stub code{ kFakeCallee };
+	code.ready();
+	const auto* p = code.getCode();
+	return { p, p + code.getSize() };
+}
+
+// Finds `movss <xmm reg>, [rsp+disp8]` = F3 0F 10 <modrm> 24 <disp8> and
+// returns the disp8 values in order. 0x24 is the SIB byte selecting rsp.
+std::vector<std::uint8_t> MovssRspDisplacements(std::span<const std::uint8_t> a_code)
+{
+	std::vector<std::uint8_t> out;
+	for (std::size_t i = 0; i + 5 < a_code.size(); ++i) {
+		if (a_code[i] == 0xF3 && a_code[i + 1] == 0x0F && a_code[i + 2] == 0x10 &&
+			(a_code[i + 3] & 0xC0) == 0x40 && (a_code[i + 3] & 0x07) == 0x04 &&
+			a_code[i + 4] == 0x24) {
+			out.push_back(a_code[i + 5]);
+		}
 	}
+	return out;
+}
 
-	// Finds `movss <xmm reg>, [rsp+disp8]` = F3 0F 10 <modrm> 24 <disp8> and
-	// returns the disp8 values in order. 0x24 is the SIB byte selecting rsp.
-	std::vector<std::uint8_t> MovssRspDisplacements(std::span<const std::uint8_t> a_code)
-	{
-		std::vector<std::uint8_t> out;
-		for (std::size_t i = 0; i + 5 < a_code.size(); ++i) {
-			if (a_code[i] == 0xF3 && a_code[i + 1] == 0x0F && a_code[i + 2] == 0x10 &&
-				(a_code[i + 3] & 0xC0) == 0x40 && (a_code[i + 3] & 0x07) == 0x04 &&
-				a_code[i + 4] == 0x24) {
-				out.push_back(a_code[i + 5]);
-			}
-		}
-		return out;
-	}
-
-	bool Contains(std::span<const std::uint8_t> a_code, std::initializer_list<std::uint8_t> a_seq)
-	{
-		const std::vector<std::uint8_t> needle{ a_seq };
-		if (needle.size() > a_code.size()) {
-			return false;
-		}
-		for (std::size_t i = 0; i + needle.size() <= a_code.size(); ++i) {
-			if (std::memcmp(a_code.data() + i, needle.data(), needle.size()) == 0) {
-				return true;
-			}
-		}
+bool Contains(std::span<const std::uint8_t> a_code, std::initializer_list<std::uint8_t> a_seq)
+{
+	const std::vector<std::uint8_t> needle{ a_seq };
+	if (needle.size() > a_code.size()) {
 		return false;
 	}
+	for (std::size_t i = 0; i + needle.size() <= a_code.size(); ++i) {
+		if (std::memcmp(a_code.data() + i, needle.data(), needle.size()) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
 }
 
 static void TestFrameAdjustAccountsForTheReturnAddress()
@@ -190,90 +190,90 @@ static void TestCharXPClampStubPreservesRax()
 
 namespace
 {
-	constexpr std::uintptr_t kFakeBranch = 0x0000'7FFE'0000'1111ull;
-	constexpr std::uintptr_t kFakeNext = 0x0000'7FFE'0000'2222ull;
-	constexpr std::uintptr_t kFakeFmaf = 0x0000'7FFE'0000'3333ull;
+constexpr std::uintptr_t kFakeBranch = 0x0000'7FFE'0000'1111ull;
+constexpr std::uintptr_t kFakeNext = 0x0000'7FFE'0000'2222ull;
+constexpr std::uintptr_t kFakeFmaf = 0x0000'7FFE'0000'3333ull;
 
-	std::vector<std::uint8_t> Bytes(Xbyak::CodeGenerator& a_code)
-	{
-		a_code.ready();
-		const auto* p = a_code.getCode();
-		return { p, p + a_code.getSize() };
-	}
+std::vector<std::uint8_t> Bytes(Xbyak::CodeGenerator& a_code)
+{
+	a_code.ready();
+	const auto* p = a_code.getCode();
+	return { p, p + a_code.getSize() };
+}
 
-	std::vector<std::uint8_t> EmitLimit(const Xbyak::Reg64& a_this, const Xbyak::Reg32& a_level, BM::Stubs::LimitExit a_exit)
-	{
-		BM::Stubs::LevelLimitStub code{ kFakeCallee, a_this, a_level, a_exit, kFakeBranch, kFakeNext };
-		return Bytes(code);
-	}
+std::vector<std::uint8_t> EmitLimit(const Xbyak::Reg64& a_this, const Xbyak::Reg32& a_level, BM::Stubs::LimitExit a_exit)
+{
+	BM::Stubs::LevelLimitStub code{ kFakeCallee, a_this, a_level, a_exit, kFakeBranch, kFakeNext };
+	return Bytes(code);
+}
 
-	// Index of the first occurrence of a_seq, or npos.
-	std::size_t Find(std::span<const std::uint8_t> a_code, std::initializer_list<std::uint8_t> a_seq)
-	{
-		const std::vector<std::uint8_t> needle{ a_seq };
-		for (std::size_t i = 0; i + needle.size() <= a_code.size(); ++i) {
-			if (std::memcmp(a_code.data() + i, needle.data(), needle.size()) == 0) {
-				return i;
-			}
+// Index of the first occurrence of a_seq, or npos.
+std::size_t Find(std::span<const std::uint8_t> a_code, std::initializer_list<std::uint8_t> a_seq)
+{
+	const std::vector<std::uint8_t> needle{ a_seq };
+	for (std::size_t i = 0; i + needle.size() <= a_code.size(); ++i) {
+		if (std::memcmp(a_code.data() + i, needle.data(), needle.size()) == 0) {
+			return i;
 		}
-		return static_cast<std::size_t>(-1);
 	}
+	return static_cast<std::size_t>(-1);
+}
 
-	std::uint64_t ReadU64(std::span<const std::uint8_t> a_code, std::size_t a_at)
-	{
-		std::uint64_t v = 0;
-		std::memcpy(&v, a_code.data() + a_at, sizeof(v));
-		return v;
+std::uint64_t ReadU64(std::span<const std::uint8_t> a_code, std::size_t a_at)
+{
+	std::uint64_t v = 0;
+	std::memcpy(&v, a_code.data() + a_at, sizeof(v));
+	return v;
+}
+
+// `mov rax, imm64; call rax` for a_target.
+std::vector<std::uint8_t> CallAbs(std::uintptr_t a_target)
+{
+	std::vector<std::uint8_t> out{ 0x48, 0xB8 };
+	for (int i = 0; i < 8; ++i) {
+		out.push_back(static_cast<std::uint8_t>(a_target >> (8 * i)));
 	}
+	out.insert(out.end(), { 0xFF, 0xD0 });
+	return out;
+}
 
-	// `mov rax, imm64; call rax` for a_target.
-	std::vector<std::uint8_t> CallAbs(std::uintptr_t a_target)
-	{
-		std::vector<std::uint8_t> out{ 0x48, 0xB8 };
-		for (int i = 0; i < 8; ++i) {
-			out.push_back(static_cast<std::uint8_t>(a_target >> (8 * i)));
+std::size_t FindVec(std::span<const std::uint8_t> a_code, const std::vector<std::uint8_t>& a_needle)
+{
+	for (std::size_t i = 0; i + a_needle.size() <= a_code.size(); ++i) {
+		if (std::memcmp(a_code.data() + i, a_needle.data(), a_needle.size()) == 0) {
+			return i;
 		}
-		out.insert(out.end(), { 0xFF, 0xD0 });
-		return out;
 	}
+	return static_cast<std::size_t>(-1);
+}
 
-	std::size_t FindVec(std::span<const std::uint8_t> a_code, const std::vector<std::uint8_t>& a_needle)
-	{
-		for (std::size_t i = 0; i + a_needle.size() <= a_code.size(); ++i) {
-			if (std::memcmp(a_code.data() + i, a_needle.data(), a_needle.size()) == 0) {
-				return i;
-			}
-		}
-		return static_cast<std::size_t>(-1);
+// Everything the stub runs between its result and its exit: the xmm
+// restores, the frame release and the pops. None of these touch the flags,
+// which is what lets the compare sit before them.
+std::vector<std::uint8_t> LimitRestore()
+{
+	std::vector<std::uint8_t> out;
+	for (std::uint8_t i = 0; i < 6; ++i) {
+		out.insert(out.end(), { 0x0F, 0x28, static_cast<std::uint8_t>(0x44 | (i << 3)), 0x24,
+								  static_cast<std::uint8_t>(BM::Stubs::kLimitSpill + 16 * i) });
 	}
+	out.insert(out.end(), { 0x48, 0x8D, 0xA4, 0x24, BM::Stubs::kLimitFrame, 0x00, 0x00, 0x00 });  // lea rsp, [rsp+frame]
+	out.insert(out.end(), { 0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59, 0x58 });  // pop r11 ... rax
+	return out;
+}
 
-	// Everything the stub runs between its result and its exit: the xmm
-	// restores, the frame release and the pops. None of these touch the flags,
-	// which is what lets the compare sit before them.
-	std::vector<std::uint8_t> LimitRestore()
-	{
-		std::vector<std::uint8_t> out;
-		for (std::uint8_t i = 0; i < 6; ++i) {
-			out.insert(out.end(), { 0x0F, 0x28, static_cast<std::uint8_t>(0x44 | (i << 3)), 0x24,
-									  static_cast<std::uint8_t>(BM::Stubs::kLimitSpill + 16 * i) });
-		}
-		out.insert(out.end(), { 0x48, 0x8D, 0xA4, 0x24, BM::Stubs::kLimitFrame, 0x00, 0x00, 0x00 });  // lea rsp, [rsp+frame]
-		out.insert(out.end(), { 0x41, 0x5B, 0x41, 0x5A, 0x41, 0x59, 0x41, 0x58, 0x5A, 0x59, 0x58 });  // pop r11 ... rax
-		return out;
+void CheckLimitSaves(std::span<const std::uint8_t> a_code)
+{
+	// push rax, rcx, rdx, r8, r9, r10, r11, then the frame.
+	const std::vector<std::uint8_t> prologue{ 0x50, 0x51, 0x52, 0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53,
+		0x48, 0x81, 0xEC, BM::Stubs::kLimitFrame, 0x00, 0x00, 0x00 };
+	CHECK_EQ(FindVec(a_code, prologue), std::size_t{ 0 });
+	for (std::uint8_t i = 0; i < 6; ++i) {  // movaps [rsp+spill+16i], xmm_i
+		CHECK(FindVec(a_code, { 0x0F, 0x29, static_cast<std::uint8_t>(0x44 | (i << 3)), 0x24,
+								  static_cast<std::uint8_t>(BM::Stubs::kLimitSpill + 16 * i) }) != static_cast<std::size_t>(-1));
 	}
-
-	void CheckLimitSaves(std::span<const std::uint8_t> a_code)
-	{
-		// push rax, rcx, rdx, r8, r9, r10, r11, then the frame.
-		const std::vector<std::uint8_t> prologue{ 0x50, 0x51, 0x52, 0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53,
-			0x48, 0x81, 0xEC, BM::Stubs::kLimitFrame, 0x00, 0x00, 0x00 };
-		CHECK_EQ(FindVec(a_code, prologue), std::size_t{ 0 });
-		for (std::uint8_t i = 0; i < 6; ++i) {  // movaps [rsp+spill+16i], xmm_i
-			CHECK(FindVec(a_code, { 0x0F, 0x29, static_cast<std::uint8_t>(0x44 | (i << 3)), 0x24,
-									  static_cast<std::uint8_t>(BM::Stubs::kLimitSpill + 16 * i) }) != static_cast<std::size_t>(-1));
-		}
-		CHECK(FindVec(a_code, LimitRestore()) != static_cast<std::size_t>(-1));
-	}
+	CHECK(FindVec(a_code, LimitRestore()) != static_cast<std::size_t>(-1));
+}
 }
 
 static void TestLevelLimitStubFrame()

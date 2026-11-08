@@ -5,13 +5,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-: "${VCPKG_ROOT:?VCPKG_ROOT not set, run scripts/setup.sh first}"
+: "${VCPKG_ROOT:?VCPKG_ROOT not set, run lib/skyrim-mod-toolchain/scripts/setup.sh first}"
 export LLVM_MINGW_BIN="${LLVM_MINGW_BIN:-$HOME/.local/opt/llvm-mingw/bin}"
 
 # Configure first: it runs the vcpkg install, which provides the xbyak headers
 # the stub tests compile against. Testing before configuring would silently
 # skip those tests on every clean build.
-cmake --preset linux-clangcl-release
+cmake --preset release
 "$ROOT/scripts/test.sh"
 cmake --build --preset release
 
@@ -19,7 +19,7 @@ DLL="build/release/BeyondMastery.dll"
 
 # The plugin must not depend on the player's C++ runtime; fail the build if a
 # dependency or a preset change brings the dynamic CRT back.
-python3 "$ROOT/scripts/check_runtime_deps.py" "$DLL"
+python3 "$ROOT/lib/skyrim-mod-toolchain/scripts/check_runtime_deps.py" "$DLL"
 
 file "$DLL"
 echo "Built $DLL"

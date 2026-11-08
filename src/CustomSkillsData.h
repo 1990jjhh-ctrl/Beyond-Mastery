@@ -23,308 +23,328 @@
 
 namespace BM::CustomSkillsData
 {
-	// A form in CSF's "plugin.esp|D63" syntax: the plugin and the form ID
-	// within it (hex, no prefix).
-	struct FormRef
-	{
-		std::string   plugin;
-		std::uint32_t localID{ 0 };
-	};
+// A form in CSF's "plugin.esp|D63" syntax: the plugin and the form ID
+// within it (hex, no prefix).
+struct FormRef
+{
+	std::string   plugin;
+	std::uint32_t localID{ 0 };
+};
 
-	enum class PerkSource : std::uint8_t
-	{
-		kPlayer,  // the player's shared perk points
-		kOwn      // the skill's own pool
-	};
+enum class PerkSource : std::uint8_t
+{
+	kPlayer,  // the player's shared perk points
+	kOwn      // the skill's own pool
+};
 
-	struct Settings
-	{
-		bool       enable{ false };
-		PerkSource perkSource{ PerkSource::kPlayer };
-	};
+struct Settings
+{
+	bool       enable{ false };
+	PerkSource perkSource{ PerkSource::kPlayer };
+};
 
-	// The values as read from the INI, before any validation.
-	struct RawSettings
-	{
-		std::string enable;
-		std::string perkSource;
-	};
+// The values as read from the INI, before any validation.
+struct RawSettings
+{
+	std::string enable;
+	std::string perkSource;
+};
 
-	struct Parsed
-	{
-		Settings                 settings;
-		std::vector<std::string> warnings;
-	};
+struct Parsed
+{
+	Settings                 settings;
+	std::vector<std::string> warnings;
+};
 
-	namespace detail
-	{
-		[[nodiscard]] inline std::string Normalize(std::string_view a_text)
-		{
-			const auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
-			while (!a_text.empty() && isSpace(static_cast<unsigned char>(a_text.front()))) {
-				a_text.remove_prefix(1);
-			}
-			while (!a_text.empty() && isSpace(static_cast<unsigned char>(a_text.back()))) {
-				a_text.remove_suffix(1);
-			}
-			std::string out(a_text);
-			std::ranges::transform(out, out.begin(),
-				[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			return out;
+namespace detail
+{
+[[nodiscard]] inline std::string Normalize(std::string_view a_text)
+{
+	const auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
+	while (!a_text.empty() && isSpace(static_cast<unsigned char>(a_text.front()))) {
+		a_text.remove_prefix(1);
+	}
+	while (!a_text.empty() && isSpace(static_cast<unsigned char>(a_text.back()))) {
+		a_text.remove_suffix(1);
+	}
+	std::string out(a_text);
+	std::ranges::transform(out, out.begin(),
+		[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	return out;
+}
+}
+
+// "plugin.esp|D63". Anything without a plugin, or with a missing or
+// non-hex or oversized ID, is not a form reference.
+[[nodiscard]] inline std::optional<FormRef> ParseFormRef(std::string_view a_text)
+{
+	const auto bar = a_text.find('|');
+	if (bar == std::string_view::npos || bar == 0 || bar + 1 == a_text.size()) {
+		return std::nullopt;
+	}
+	const auto    id = a_text.substr(bar + 1);
+	std::uint32_t value = 0;
+	const auto    end = id.data() + id.size();
+	const auto [ptr, ec] = std::from_chars(id.data(), end, value, 16);
+	if (ec != std::errc{} || ptr != end) {
+		return std::nullopt;
+	}
+	return FormRef{ std::string(a_text.substr(0, bar)), value };
+}
+
+// Index of the first character at or after a_from that is neither whitespace
+// nor part of a comment.
+[[nodiscard]] inline std::size_t NextJsonToken(std::string_view a_json, std::size_t a_from)
+{
+	std::size_t i = a_from;
+	while (i < a_json.size()) {
+		if (std::isspace(static_cast<unsigned char>(a_json[i]))) {
+			++i;
+			continue;
+		}
+		const bool lineComment = a_json.substr(i, 2) == "//";
+		if (!lineComment && a_json.substr(i, 2) != "/*") {
+			break;
+		}
+		const auto end = lineComment ? a_json.find('\n', i) : a_json.find("*/", i + 2);
+		i = end == std::string_view::npos ? a_json.size() : end + (lineComment ? 1 : 2);
+	}
+	return i;
+}
+
+// Whether the comma at a_comma is followed, past whitespace and comments, by
+// a closing ] or }.
+[[nodiscard]] inline bool IsTrailingComma(std::string_view a_json, std::size_t a_comma)
+{
+	const auto next = NextJsonToken(a_json, a_comma + 1);
+	return next < a_json.size() && (a_json[next] == ']' || a_json[next] == '}');
+}
+
+// Copies the character at a_i of a string literal to a_out, with its escaped
+// character if it is a backslash, and clears a_inString at the closing quote.
+// Returns the index of the last character consumed.
+inline std::size_t CopyStringChar(std::string_view a_json, std::size_t a_i, std::string& a_out, bool& a_inString)
+{
+	const char c = a_json[a_i];
+	a_out += c;
+	if (c == '\\' && a_i + 1 < a_json.size()) {
+		a_out += a_json[a_i + 1];
+		return a_i + 1;
+	}
+	if (c == '"') {
+		a_inString = false;
+	}
+	return a_i;
+}
+
+// CSF's JSON files with trailing commas removed. CSF's own reader accepts a
+// comma before ] or } (skyrimacrobatics.json has one) and nlohmann-json
+// doesn't, so without this a skill CSF loads would be missing here.
+// Commas inside strings stay; comments between the comma and the bracket
+// are looked past and kept, for the parser to skip.
+[[nodiscard]] inline std::string StripTrailingCommas(std::string_view a_json)
+{
+	std::string out;
+	out.reserve(a_json.size());
+	bool inString = false;
+	for (std::size_t i = 0; i < a_json.size(); ++i) {
+		const char c = a_json[i];
+		if (inString) {
+			i = CopyStringChar(a_json, i, out, inString);
+			continue;
+		}
+		if (c == '/' && (a_json.substr(i, 2) == "//" || a_json.substr(i, 2) == "/*")) {
+			const auto end = NextJsonToken(a_json, i);  // copy the comment through unchanged
+			out.append(a_json.substr(i, end - i));
+			i = end - 1;
+			continue;
+		}
+		if (c == ',' && IsTrailingComma(a_json, i)) {
+			continue;
+		}
+		if (c == '"') {
+			inString = true;
+		}
+		out += c;
+	}
+	return out;
+}
+
+// Whether two skill ids name the same skill. Papyrus strings are
+// case-insensitive and the game keeps each one in the case it saw first, so
+// an id can come back from the MCM as "Lolligagging" when CSF's display name
+// was interned before it.
+[[nodiscard]] constexpr bool SameId(std::string_view a_lhs, std::string_view a_rhs) noexcept
+{
+	constexpr auto lower = [](char a_c) { return a_c >= 'A' && a_c <= 'Z' ? static_cast<char>(a_c - 'A' + 'a') : a_c; };
+	return std::ranges::equal(a_lhs, a_rhs, {}, lower, lower);
+}
+
+// The keys of a skill's section the MCM may change; anything else is refused.
+[[nodiscard]] constexpr bool IsMcmKey(std::string_view a_key) noexcept
+{
+	return a_key == "bEnable" || a_key == "sPerkSource";
+}
+
+// Validates the raw INI values. A bad value falls back to its default and
+// adds a warning for the log; an empty one is simply unset. a_hasOwnPool:
+// whether the skill has a pool of its own, which "own" needs.
+[[nodiscard]] inline Parsed ParseSettings(const RawSettings& a_raw, bool a_hasOwnPool)
+{
+	Parsed out;
+	auto&  s = out.settings;
+	auto&  warn = out.warnings;
+
+	if (const auto v = detail::Normalize(a_raw.enable); !v.empty()) {
+		if (v == "true" || v == "1" || v == "yes" || v == "on") {
+			s.enable = true;
+		} else if (v != "false" && v != "0" && v != "no" && v != "off") {
+			warn.push_back("bEnable \"" + a_raw.enable + "\" is not a boolean, using false");
 		}
 	}
 
-	// "plugin.esp|D63". Anything without a plugin, or with a missing or
-	// non-hex or oversized ID, is not a form reference.
-	[[nodiscard]] inline std::optional<FormRef> ParseFormRef(std::string_view a_text)
-	{
-		const auto bar = a_text.find('|');
-		if (bar == std::string_view::npos || bar == 0 || bar + 1 == a_text.size()) {
+	if (const auto v = detail::Normalize(a_raw.perkSource); !v.empty() && v != "player") {
+		if (v != "own") {
+			warn.push_back("sPerkSource \"" + a_raw.perkSource + "\" is not player or own, using player");
+		} else if (!a_hasOwnPool) {
+			warn.push_back("sPerkSource own needs a skill with its own perk pool, using player");
+		} else {
+			s.perkSource = PerkSource::kOwn;
+		}
+	}
+
+	return out;
+}
+
+[[nodiscard]] inline std::string SectionName(std::string_view a_id)
+{
+	return "CustomSkill." + std::string(a_id);
+}
+
+// The position of the one entry of a_names equal to a_name; nullopt when
+// none is, or when several are and so none can be picked.
+[[nodiscard]] inline std::optional<std::size_t> UniqueIndex(const std::vector<std::string>& a_names, std::string_view a_name)
+{
+	std::optional<std::size_t> found;
+	for (std::size_t i = 0; i < a_names.size(); ++i) {
+		if (a_names[i] != a_name) {
+			continue;
+		}
+		if (found) {
 			return std::nullopt;
 		}
-		const auto    id = a_text.substr(bar + 1);
+		found = i;
+	}
+	return found;
+}
+
+// CSF numbers its skills' actor values ('CSF' << 8) + tree index, far past
+// the engine's own values, so a value at or above the base is one of its
+// skills. Signed, like ActorValue, so kNone (-1) is not.
+inline constexpr std::int32_t kCustomActorValueBase = ('C' << 24) | ('S' << 16) | ('F' << 8);
+
+[[nodiscard]] constexpr bool IsCustomActorValue(std::int32_t a_value) noexcept
+{
+	return a_value >= kCustomActorValueBase;
+}
+
+// A custom skill's cap and the gates paid in its current climb, kept in the
+// co-save under the skill's CSF id (PRD FR-1, FR-13).
+struct CustomCap
+{
+	std::uint16_t cap{ 100 };
+	std::uint8_t  gatesPaid{ 0 };
+
+	friend bool operator==(const CustomCap&, const CustomCap&) = default;
+};
+
+// The 'CCAP' record, little-endian: u32 count, then per entry u16 id
+// length, the id bytes, u16 cap, u8 gates. Entries stay even when their
+// mod is gone, so uninstalling and reinstalling it loses nothing. An id
+// over 65535 bytes cannot be written and is skipped.
+[[nodiscard]] inline std::vector<std::byte> EncodeCaps(const std::map<std::string, CustomCap>& a_caps)
+{
+	constexpr std::size_t kMaxId = std::numeric_limits<std::uint16_t>::max();
+
+	std::vector<std::byte> out;
+	const auto             put = [&out](std::uint64_t a_value, int a_bytes) {
+		for (int i = 0; i < a_bytes; ++i) {
+			out.push_back(static_cast<std::byte>((a_value >> (8 * i)) & 0xFF));
+		}
+	};
+
+	std::uint32_t count = 0;
+	for (const auto& [id, cap] : a_caps) {
+		count += id.size() <= kMaxId ? 1 : 0;
+	}
+	put(count, 4);
+	for (const auto& [id, cap] : a_caps) {
+		if (id.size() > kMaxId) {
+			continue;
+		}
+		put(id.size(), 2);
+		for (const char c : id) {
+			out.push_back(static_cast<std::byte>(c));
+		}
+		put(cap.cap, 2);
+		put(cap.gatesPaid, 1);
+	}
+	return out;
+}
+
+// The largest 'CCAP' record that is read. The loader allocates the length
+// from the record header before reading it, so a damaged header could
+// otherwise ask for gigabytes and terminate the game inside SKSE's load
+// callback (FR-22). 1 MiB holds thousands of skills.
+inline constexpr std::uint32_t kMaxCapsRecordLength = 1u << 20;
+
+[[nodiscard]] constexpr bool IsPlausibleCapsRecordLength(std::uint32_t a_length) noexcept
+{
+	return a_length <= kMaxCapsRecordLength;
+}
+
+// nullopt for a truncated or oversized buffer, or a cap that is not
+// Curves::IsPlausibleCap: damaged data, not a cap.
+[[nodiscard]] inline std::optional<std::map<std::string, CustomCap>> DecodeCaps(std::span<const std::byte> a_bytes)
+{
+	std::size_t pos = 0;
+	const auto  get = [&](int a_count) -> std::optional<std::uint32_t> {
+		if (a_bytes.size() - pos < static_cast<std::size_t>(a_count)) {
+			return std::nullopt;
+		}
 		std::uint32_t value = 0;
-		const auto    end = id.data() + id.size();
-		const auto [ptr, ec] = std::from_chars(id.data(), end, value, 16);
-		if (ec != std::errc{} || ptr != end) {
-			return std::nullopt;
+		for (int i = 0; i < a_count; ++i) {
+			value |= std::to_integer<std::uint32_t>(a_bytes[pos + i]) << (8 * i);
 		}
-		return FormRef{ std::string(a_text.substr(0, bar)), value };
-	}
-
-	// CSF's JSON files with trailing commas removed. CSF's own reader accepts a
-	// comma before ] or } (skyrimacrobatics.json has one) and nlohmann-json
-	// doesn't, so without this a skill CSF loads would be missing here.
-	// Commas inside strings stay; comments between the comma and the bracket
-	// are looked past and kept, for the parser to skip.
-	[[nodiscard]] inline std::string StripTrailingCommas(std::string_view a_json)
-	{
-		// Index of the first character after a_from that is neither whitespace
-		// nor part of a comment.
-		const auto nextToken = [&](std::size_t a_from) {
-			std::size_t i = a_from;
-			while (i < a_json.size()) {
-				if (std::isspace(static_cast<unsigned char>(a_json[i]))) {
-					++i;
-				} else if (a_json.substr(i, 2) == "//") {
-					const auto end = a_json.find('\n', i);
-					i = end == std::string_view::npos ? a_json.size() : end + 1;
-				} else if (a_json.substr(i, 2) == "/*") {
-					const auto end = a_json.find("*/", i + 2);
-					i = end == std::string_view::npos ? a_json.size() : end + 2;
-				} else {
-					break;
-				}
-			}
-			return i;
-		};
-
-		std::string out;
-		out.reserve(a_json.size());
-		bool inString = false;
-		for (std::size_t i = 0; i < a_json.size(); ++i) {
-			const char c = a_json[i];
-			if (inString) {
-				out += c;
-				if (c == '\\' && i + 1 < a_json.size()) {
-					out += a_json[++i];
-				} else if (c == '"') {
-					inString = false;
-				}
-				continue;
-			}
-			if (c == '"') {
-				inString = true;
-			} else if (c == '/' && (a_json.substr(i, 2) == "//" || a_json.substr(i, 2) == "/*")) {
-				const auto end = nextToken(i);  // copy the comment through unchanged
-				out.append(a_json.substr(i, end - i));
-				i = end - 1;
-				continue;
-			} else if (c == ',') {
-				const auto next = nextToken(i + 1);
-				if (next < a_json.size() && (a_json[next] == ']' || a_json[next] == '}')) {
-					continue;
-				}
-			}
-			out += c;
-		}
-		return out;
-	}
-
-	// Whether two skill ids name the same skill. Papyrus strings are
-	// case-insensitive and the game keeps each one in the case it saw first, so
-	// an id can come back from the MCM as "Lolligagging" when CSF's display name
-	// was interned before it.
-	[[nodiscard]] constexpr bool SameId(std::string_view a_lhs, std::string_view a_rhs) noexcept
-	{
-		constexpr auto lower = [](char a_c) { return a_c >= 'A' && a_c <= 'Z' ? static_cast<char>(a_c - 'A' + 'a') : a_c; };
-		return std::ranges::equal(a_lhs, a_rhs, {}, lower, lower);
-	}
-
-	// The keys of a skill's section the MCM may change; anything else is refused.
-	[[nodiscard]] constexpr bool IsMcmKey(std::string_view a_key) noexcept
-	{
-		return a_key == "bEnable" || a_key == "sPerkSource";
-	}
-
-	// Validates the raw INI values. A bad value falls back to its default and
-	// adds a warning for the log; an empty one is simply unset. a_hasOwnPool:
-	// whether the skill has a pool of its own, which "own" needs.
-	[[nodiscard]] inline Parsed ParseSettings(const RawSettings& a_raw, bool a_hasOwnPool)
-	{
-		Parsed out;
-		auto&  s = out.settings;
-		auto&  warn = out.warnings;
-
-		if (const auto v = detail::Normalize(a_raw.enable); !v.empty()) {
-			if (v == "true" || v == "1" || v == "yes" || v == "on") {
-				s.enable = true;
-			} else if (v != "false" && v != "0" && v != "no" && v != "off") {
-				warn.push_back("bEnable \"" + a_raw.enable + "\" is not a boolean, using false");
-			}
-		}
-
-		if (const auto v = detail::Normalize(a_raw.perkSource); !v.empty() && v != "player") {
-			if (v != "own") {
-				warn.push_back("sPerkSource \"" + a_raw.perkSource + "\" is not player or own, using player");
-			} else if (!a_hasOwnPool) {
-				warn.push_back("sPerkSource own needs a skill with its own perk pool, using player");
-			} else {
-				s.perkSource = PerkSource::kOwn;
-			}
-		}
-
-		return out;
-	}
-
-	[[nodiscard]] inline std::string SectionName(std::string_view a_id)
-	{
-		return "CustomSkill." + std::string(a_id);
-	}
-
-	// The position of the one entry of a_names equal to a_name; nullopt when
-	// none is, or when several are and so none can be picked.
-	[[nodiscard]] inline std::optional<std::size_t> UniqueIndex(const std::vector<std::string>& a_names, std::string_view a_name)
-	{
-		std::optional<std::size_t> found;
-		for (std::size_t i = 0; i < a_names.size(); ++i) {
-			if (a_names[i] == a_name) {
-				if (found) {
-					return std::nullopt;
-				}
-				found = i;
-			}
-		}
-		return found;
-	}
-
-	// CSF numbers its skills' actor values ('CSF' << 8) + tree index, far past
-	// the engine's own values, so a value at or above the base is one of its
-	// skills. Signed, like ActorValue, so kNone (-1) is not.
-	inline constexpr std::int32_t kCustomActorValueBase = ('C' << 24) | ('S' << 16) | ('F' << 8);
-
-	[[nodiscard]] constexpr bool IsCustomActorValue(std::int32_t a_value) noexcept
-	{
-		return a_value >= kCustomActorValueBase;
-	}
-
-	// A custom skill's cap and the gates paid in its current climb, kept in the
-	// co-save under the skill's CSF id (PRD FR-1, FR-13).
-	struct CustomCap
-	{
-		std::uint16_t cap{ 100 };
-		std::uint8_t  gatesPaid{ 0 };
-
-		friend bool operator==(const CustomCap&, const CustomCap&) = default;
+		pos += a_count;
+		return value;
 	};
 
-	// The 'CCAP' record, little-endian: u32 count, then per entry u16 id
-	// length, the id bytes, u16 cap, u8 gates. Entries stay even when their
-	// mod is gone, so uninstalling and reinstalling it loses nothing. An id
-	// over 65535 bytes cannot be written and is skipped.
-	[[nodiscard]] inline std::vector<std::byte> EncodeCaps(const std::map<std::string, CustomCap>& a_caps)
-	{
-		constexpr std::size_t kMaxId = std::numeric_limits<std::uint16_t>::max();
-
-		std::vector<std::byte> out;
-		const auto             put = [&out](std::uint64_t a_value, int a_bytes) {
-			for (int i = 0; i < a_bytes; ++i) {
-				out.push_back(static_cast<std::byte>((a_value >> (8 * i)) & 0xFF));
-			}
-		};
-
-		std::uint32_t count = 0;
-		for (const auto& [id, cap] : a_caps) {
-			count += id.size() <= kMaxId ? 1 : 0;
-		}
-		put(count, 4);
-		for (const auto& [id, cap] : a_caps) {
-			if (id.size() > kMaxId) {
-				continue;
-			}
-			put(id.size(), 2);
-			for (const char c : id) {
-				out.push_back(static_cast<std::byte>(c));
-			}
-			put(cap.cap, 2);
-			put(cap.gatesPaid, 1);
-		}
-		return out;
+	const auto count = get(4);
+	if (!count) {
+		return std::nullopt;
 	}
-
-	// The largest 'CCAP' record that is read. The loader allocates the length
-	// from the record header before reading it, so a damaged header could
-	// otherwise ask for gigabytes and terminate the game inside SKSE's load
-	// callback (FR-22). 1 MiB holds thousands of skills.
-	inline constexpr std::uint32_t kMaxCapsRecordLength = 1u << 20;
-
-	[[nodiscard]] constexpr bool IsPlausibleCapsRecordLength(std::uint32_t a_length) noexcept
-	{
-		return a_length <= kMaxCapsRecordLength;
-	}
-
-	// nullopt for a truncated or oversized buffer, or a cap that is not
-	// Curves::IsPlausibleCap: damaged data, not a cap.
-	[[nodiscard]] inline std::optional<std::map<std::string, CustomCap>> DecodeCaps(std::span<const std::byte> a_bytes)
-	{
-		std::size_t pos = 0;
-		const auto  get = [&](int a_count) -> std::optional<std::uint32_t> {
-			if (a_bytes.size() - pos < static_cast<std::size_t>(a_count)) {
-				return std::nullopt;
-			}
-			std::uint32_t value = 0;
-			for (int i = 0; i < a_count; ++i) {
-				value |= std::to_integer<std::uint32_t>(a_bytes[pos + i]) << (8 * i);
-			}
-			pos += a_count;
-			return value;
-		};
-
-		const auto count = get(4);
-		if (!count) {
+	std::map<std::string, CustomCap> out;
+	for (std::uint32_t n = 0; n < *count; ++n) {
+		const auto len = get(2);
+		if (!len || a_bytes.size() - pos < *len) {
 			return std::nullopt;
 		}
-		std::map<std::string, CustomCap> out;
-		for (std::uint32_t n = 0; n < *count; ++n) {
-			const auto len = get(2);
-			if (!len || a_bytes.size() - pos < *len) {
-				return std::nullopt;
-			}
-			std::string id;
-			for (std::uint32_t i = 0; i < *len; ++i) {
-				id.push_back(static_cast<char>(a_bytes[pos + i]));
-			}
-			pos += *len;
-			const auto cap = get(2);
-			const auto gates = get(1);
-			if (!cap || !gates || !Curves::IsPlausibleCap(static_cast<std::uint16_t>(*cap))) {
-				return std::nullopt;
-			}
-			out[id] = CustomCap{ static_cast<std::uint16_t>(*cap), static_cast<std::uint8_t>(*gates) };
+		std::string id;
+		for (std::uint32_t i = 0; i < *len; ++i) {
+			id.push_back(static_cast<char>(a_bytes[pos + i]));
 		}
-		if (pos != a_bytes.size()) {
+		pos += *len;
+		const auto cap = get(2);
+		const auto gates = get(1);
+		if (!cap || !gates || !Curves::IsPlausibleCap(static_cast<std::uint16_t>(*cap))) {
 			return std::nullopt;
 		}
-		return out;
+		out[id] = CustomCap{ static_cast<std::uint16_t>(*cap), static_cast<std::uint8_t>(*gates) };
 	}
+	if (pos != a_bytes.size()) {
+		return std::nullopt;
+	}
+	return out;
+}
 }

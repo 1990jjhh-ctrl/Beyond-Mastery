@@ -7,7 +7,7 @@ SkyrimSE.exe. This is how a site earns `verified = true` without a debugger and
 without launching the game (docs/hook-points.md, "Verification record").
 
 Address Library databases come in three shapes, all parsed here, following
-lib/commonlibsse-ng/src/REL/IDDB.cpp:
+lib/skyrim-mod-toolchain/lib/commonlibsse-ng/src/REL/IDDB.cpp:
 
   format 1, 2  sparse, delta-encoded id/offset pairs (SE and AE up to 1.6.x)
   format 5     dense u32 array indexed directly by id (1.7.99 and later)

@@ -10,69 +10,69 @@
 
 namespace
 {
-	using namespace BM;
+using namespace BM;
 
-	constexpr auto kClass = "BeyondMastery"sv;
+constexpr auto kClass = "BeyondMastery"sv;
 
-	// Empty without CSF: its skills are never resolved, so their settings
-	// would do nothing.
-	std::vector<std::string> GetCustomSkillIds(RE::StaticFunctionTag*)
-	{
-		std::vector<std::string> ids;
-		if (!Compat::CustomSkillsLoaded()) {
-			return ids;
-		}
-		for (const auto& skill : CustomSkills::All()) {
-			ids.push_back(skill.id);
-		}
+// Empty without CSF: its skills are never resolved, so their settings
+// would do nothing.
+std::vector<std::string> GetCustomSkillIds(RE::StaticFunctionTag*)
+{
+	std::vector<std::string> ids;
+	if (!Compat::CustomSkillsLoaded()) {
 		return ids;
 	}
-
-	bool CustomSkillLimitInstalled(RE::StaticFunctionTag*)
-	{
-		return Hooks::CustomSkillLimitInstalled();
+	for (const auto& skill : CustomSkills::All()) {
+		ids.push_back(skill.id);
 	}
+	return ids;
+}
 
-	std::string GetCustomSkillName(RE::StaticFunctionTag*, std::string_view a_id)
-	{
-		const auto* skill = CustomSkills::FindById(a_id);
-		return skill ? skill->displayName : std::string(a_id);
-	}
+bool CustomSkillLimitInstalled(RE::StaticFunctionTag*)
+{
+	return Hooks::CustomSkillLimitInstalled();
+}
 
-	bool GetCustomSkillEnabled(RE::StaticFunctionTag*, std::string_view a_id)
-	{
-		const auto* skill = CustomSkills::FindById(a_id);
-		return skill && CustomSkills::SettingsOf(*skill).enable;
-	}
+std::string GetCustomSkillName(RE::StaticFunctionTag*, std::string_view a_id)
+{
+	const auto* skill = CustomSkills::FindById(a_id);
+	return skill ? skill->displayName : std::string(a_id);
+}
 
-	// Refuses any key the MCM may not change, however it got here.
-	bool Set(std::string_view a_id, std::string_view a_key, std::string_view a_value)
-	{
-		return CustomSkillsData::IsMcmKey(a_key) && CustomSkills::SetSetting(a_id, a_key, a_value);
-	}
+bool GetCustomSkillEnabled(RE::StaticFunctionTag*, std::string_view a_id)
+{
+	const auto* skill = CustomSkills::FindById(a_id);
+	return skill && CustomSkills::SettingsOf(*skill).enable;
+}
 
-	bool SetCustomSkillEnabled(RE::StaticFunctionTag*, std::string_view a_id, bool a_enabled)
-	{
-		return Set(a_id, "bEnable", a_enabled ? "true" : "false");
-	}
+// Refuses any key the MCM may not change, however it got here.
+bool Set(std::string_view a_id, std::string_view a_key, std::string_view a_value)
+{
+	return CustomSkillsData::IsMcmKey(a_key) && CustomSkills::SetSetting(a_id, a_key, a_value);
+}
 
-	bool CustomSkillHasOwnPool(RE::StaticFunctionTag*, std::string_view a_id)
-	{
-		const auto* skill = CustomSkills::FindById(a_id);
-		return skill && skill->perkPointsGlobal;
-	}
+bool SetCustomSkillEnabled(RE::StaticFunctionTag*, std::string_view a_id, bool a_enabled)
+{
+	return Set(a_id, "bEnable", a_enabled ? "true" : "false");
+}
 
-	std::string GetCustomSkillPerkSource(RE::StaticFunctionTag*, std::string_view a_id)
-	{
-		const auto* skill = CustomSkills::FindById(a_id);
-		const bool  own = skill && CustomSkills::SettingsOf(*skill).perkSource == CustomSkillsData::PerkSource::kOwn;
-		return own ? "own" : "player";
-	}
+bool CustomSkillHasOwnPool(RE::StaticFunctionTag*, std::string_view a_id)
+{
+	const auto* skill = CustomSkills::FindById(a_id);
+	return skill && skill->perkPointsGlobal;
+}
 
-	bool SetCustomSkillPerkSource(RE::StaticFunctionTag*, std::string_view a_id, std::string_view a_source)
-	{
-		return Set(a_id, "sPerkSource", a_source);
-	}
+std::string GetCustomSkillPerkSource(RE::StaticFunctionTag*, std::string_view a_id)
+{
+	const auto* skill = CustomSkills::FindById(a_id);
+	const bool  own = skill && CustomSkills::SettingsOf(*skill).perkSource == CustomSkillsData::PerkSource::kOwn;
+	return own ? "own" : "player";
+}
+
+bool SetCustomSkillPerkSource(RE::StaticFunctionTag*, std::string_view a_id, std::string_view a_source)
+{
+	return Set(a_id, "sPerkSource", a_source);
+}
 }
 
 bool BM::Papyrus::Register(RE::BSScript::IVirtualMachine* a_vm)

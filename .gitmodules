@@ -1,4 +1,3 @@
-[submodule "lib/commonlibsse-ng"]
-	path = lib/commonlibsse-ng
-	url = https://github.com/alandtse/CommonLibSSE-NG.git
-	branch = ng
+[submodule "lib/skyrim-mod-toolchain"]
+	path = lib/skyrim-mod-toolchain
+	url = https://github.com/1990jjhh-ctrl/skyrim-mod-toolchain.git

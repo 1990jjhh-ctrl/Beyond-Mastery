@@ -13,81 +13,81 @@
 
 namespace
 {
-	// SKSE's interface outlives SKSEPlugin_Load, so it is kept for the conflict
-	// probe, which SKSE only answers from kPostLoad on.
-	const SKSE::LoadInterface* g_skse = nullptr;
+// SKSE's interface outlives SKSEPlugin_Load, so it is kept for the conflict
+// probe, which SKSE only answers from kPostLoad on.
+const SKSE::LoadInterface* g_skse = nullptr;
 
-	std::vector<std::string> g_conflicts;
+std::vector<std::string> g_conflicts;
 
-	void DetectConflicts()
-	{
-		// Probe through SKSE's own accessor rather than SKSE::GetPluginInfo:
-		// CommonLibSSE's wrapper logs at error level whenever a plugin is
-		// absent, and for a conflict probe "absent" is the normal, healthy
-		// answer -- it put three false [E] lines in every player's log.
-		for (const auto& name : BM::Config::Get().knownConflicts) {
-			if (g_skse && g_skse->GetPluginInfo(name.c_str())) {
-				logger::warn("Conflicting SKSE plugin loaded: {}", name);
-				g_conflicts.push_back(name);
-			}
+void DetectConflicts()
+{
+	// Probe through SKSE's own accessor rather than SKSE::GetPluginInfo:
+	// CommonLibSSE's wrapper logs at error level whenever a plugin is
+	// absent, and for a conflict probe "absent" is the normal, healthy
+	// answer -- it put three false [E] lines in every player's log.
+	for (const auto& name : BM::Config::Get().knownConflicts) {
+		if (g_skse && g_skse->GetPluginInfo(name.c_str())) {
+			logger::warn("Conflicting SKSE plugin loaded: {}", name);
+			g_conflicts.push_back(name);
 		}
 	}
+}
 
-	// One notification per session covering both signals (FR-20): a known
-	// conflicting plugin, and a patch site whose bytes another plugin already
-	// changed. Two separate message boxes would violate success criterion 6.
-	void NotifyConflicts()
-	{
-		const bool mismatch = BM::Hooks::AnySignatureMismatch();
-		if ((g_conflicts.empty() && !mismatch) || !BM::Config::Get().warnOnConflict) {
-			return;
-		}
-
-		// RE::DebugMessageBox resolves relocations of its own (the message box
-		// menu and the game setting collection), so calling it without an
-		// address library would terminate the process from inside
-		// CommonLibSSE -- the very crash the guard in InstallAll avoids. The
-		// log already carries the detail in that state.
-		if (BM::Hooks::AddressLibraryMissing()) {
-			logger::warn(
-				"Not showing the conflict warning: no address library, so no engine call "
-				"is safe. See the critical entry above.");
-			return;
-		}
-
-		std::string msg = "Beyond Mastery: "s;
-		if (!g_conflicts.empty()) {
-			std::string list;
-			for (const auto& n : g_conflicts) {
-				list += list.empty() ? n : ", " + n;
-			}
-			msg += std::format("conflicting plugin(s) loaded: {}. ", list);
-		}
-		if (mismatch) {
-			msg += "some engine patch sites did not match and were skipped. "sv;
-		}
-		msg += "See BeyondMastery.log."sv;
-		RE::DebugMessageBox(msg.c_str());
+// One notification per session covering both signals (FR-20): a known
+// conflicting plugin, and a patch site whose bytes another plugin already
+// changed. Two separate message boxes would violate success criterion 6.
+void NotifyConflicts()
+{
+	const bool mismatch = BM::Hooks::AnySignatureMismatch();
+	if ((g_conflicts.empty() && !mismatch) || !BM::Config::Get().warnOnConflict) {
+		return;
 	}
 
-	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
-	{
-		switch (a_msg->type) {
-		case SKSE::MessagingInterface::kPostLoad:
-			DetectConflicts();
-			BM::Compat::Detect(*g_skse);
-			break;
-		case SKSE::MessagingInterface::kDataLoaded:
-			// Check the sites first so NotifyConflicts can fold a signature
-			// mismatch into the same single warning.
-			BM::CustomSkills::Resolve();
-			BM::Hooks::InstallAll();
-			NotifyConflicts();
-			break;
-		default:
-			break;
-		}
+	// RE::DebugMessageBox resolves relocations of its own (the message box
+	// menu and the game setting collection), so calling it without an
+	// address library would terminate the process from inside
+	// CommonLibSSE -- the very crash the guard in InstallAll avoids. The
+	// log already carries the detail in that state.
+	if (BM::Hooks::AddressLibraryMissing()) {
+		logger::warn(
+			"Not showing the conflict warning: no address library, so no engine call "
+			"is safe. See the critical entry above.");
+		return;
 	}
+
+	std::string msg = "Beyond Mastery: "s;
+	if (!g_conflicts.empty()) {
+		std::string list;
+		for (const auto& n : g_conflicts) {
+			list += list.empty() ? n : ", " + n;
+		}
+		msg += std::format("conflicting plugin(s) loaded: {}. ", list);
+	}
+	if (mismatch) {
+		msg += "some engine patch sites did not match and were skipped. "sv;
+	}
+	msg += "See BeyondMastery.log."sv;
+	RE::DebugMessageBox(msg.c_str());
+}
+
+void OnMessage(SKSE::MessagingInterface::Message* a_msg)
+{
+	switch (a_msg->type) {
+	case SKSE::MessagingInterface::kPostLoad:
+		DetectConflicts();
+		BM::Compat::Detect(*g_skse);
+		break;
+	case SKSE::MessagingInterface::kDataLoaded:
+		// Check the sites first so NotifyConflicts can fold a signature
+		// mismatch into the same single warning.
+		BM::CustomSkills::Resolve();
+		BM::Hooks::InstallAll();
+		NotifyConflicts();
+		break;
+	default:
+		break;
+	}
+}
 }
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
