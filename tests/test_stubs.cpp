@@ -400,13 +400,21 @@ static void TestUseXPFactorStub()
 static void TestCustomSkillsSitesFit()
 {
 	using namespace BM::CustomSkillsSites;
-	// Each site holds the 5-byte jmp or call, and its pattern covers it.
-	for (const auto* site : kLimitSites) {
-		CHECK(site->length >= 5);
-		CHECK(site->length <= BM::Patterns::Length(site->pattern));
+	// In every build, each site holds the 5-byte jmp or call, its pattern
+	// covers it, and it lies in the function the build names.
+	for (const auto* build : kBuilds) {
+		for (const auto* site : { build->loopEntry, build->loopRepeat, build->incrementCheck, build->incrementCount }) {
+			CHECK(site->length >= 5);
+			CHECK(site->length <= BM::Patterns::Length(site->pattern));
+		}
+		CHECK_EQ(build->useXP->length, std::size_t{ 5 });
+		CHECK(BM::Patterns::Length(build->useXP->pattern) >= 5);
+		CHECK(build->useXP->function == build->advance);
+		CHECK(build->loopEntry->function == build->advance);
+		CHECK(build->loopRepeat->function == build->advance);
+		CHECK(build->incrementCheck->function == build->increment);
+		CHECK(build->incrementCount->function == build->increment);
 	}
-	CHECK_EQ(kAdvanceUseXP.length, std::size_t{ 5 });
-	CHECK(BM::Patterns::Length(kAdvanceUseXP.pattern) >= 5);
 }
 
 static void TestCustomSkillsTrampolineBudget()
@@ -415,12 +423,13 @@ static void TestCustomSkillsTrampolineBudget()
 	using BM::Stubs::LimitExit;
 	// The CSF trampoline holds the stubs only: the sites are patched with a
 	// direct rel32 to each.
-	BM::Stubs::UseXPFactorStub xp{ kFakeCallee, kFakeFmaf, r14 };
-	const auto                 total = EmitLimit(r14, esi, LimitExit::kBranchIfReached).size() +
-	                                   EmitLimit(r14, esi, LimitExit::kBranchIfBelow).size() +
-	                                   EmitLimit(rdi, r14d, LimitExit::kBranchIfReached).size() +
-	                                   EmitLimit(rdi, r14d, LimitExit::kRemaining).size() + Bytes(xp).size();
-	CHECK(total <= BM::Stubs::kCustomSkillsTrampolineSize);
+	// Each build's registers (CustomSkillsSites.h).
+	BM::Stubs::UseXPFactorStub xp320{ kFakeCallee, kFakeFmaf, r14 };
+	const auto                 total320 = EmitLimit(r14, esi, LimitExit::kBranchIfReached).size() +
+	                                      EmitLimit(r14, esi, LimitExit::kBranchIfBelow).size() +
+	                                      EmitLimit(rdi, r14d, LimitExit::kBranchIfReached).size() +
+	                                      EmitLimit(rdi, r14d, LimitExit::kRemaining).size() + Bytes(xp320).size();
+	CHECK(total320 <= BM::Stubs::kCustomSkillsTrampolineSize);
 }
 
 static void TestStubsFitTheTrampolineBudget()

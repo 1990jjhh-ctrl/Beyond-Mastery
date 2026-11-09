@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Checks src/CustomSkillsSites.h against a real CustomSkills.dll (CSF 3.2.0).
+"""Checks src/CustomSkillsSites.h against real CustomSkills.dll files.
 
-Set BM_CSF_DLL to the DLL's path; without it the binary tests skip, like the
-SkyrimSE.exe tests in test_verify_sites.py. The parsing tests always run.
+Set BM_CSF_DLL to one or more DLL paths, separated by os.pathsep; each is
+matched to the build whose function entries it has, and every site of that
+build is checked. Without it the binary tests skip, like the SkyrimSE.exe
+tests in test_verify_sites.py. The parsing tests always run.
 """
 
 import importlib.util
@@ -15,7 +17,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HEADER = ROOT / "src" / "CustomSkillsSites.h"
-CSF_DLL = pathlib.Path(os.environ.get("BM_CSF_DLL", "/nonexistent/CustomSkills.dll"))
+CSF_DLLS = [pathlib.Path(p) for p in os.environ.get("BM_CSF_DLL", "").split(os.pathsep) if p]
 
 
 def _load_verify_sites():
@@ -38,6 +40,12 @@ _SITE_RE = re.compile(
     r'"(?P<pattern>[^"]*)"\s*,\s*(?P<length>\d+)'
 )
 _CONST_RE = re.compile(r"inline\s+constexpr\s+std::uint32_t\s+(?P<var>\w+)\s*=\s*(?P<value>0[xX][0-9A-Fa-f]+)")
+_BUILD_RE = re.compile(r"inline\s+constexpr\s+Build\s+(?P<var>\w+)\s*\{\s*\"(?P<version>[^\"]+)\"\s*,(?P<fields>[^}]*)\}")
+_BUILD_FIELDS = ("advance", "increment", "useXP", "loopEntry", "loopRepeat", "incrementCheck", "incrementCount",
+                 "loopTop", "loopExit", "incrementReturn")
+
+# Where each build's `call fmaf` goes: the code the use-XP stub calls instead.
+FMAF_RVA = {"3.2.0": 0xB8D20}
 
 
 def parse_header():
@@ -48,72 +56,76 @@ def parse_header():
         for m in _SITE_RE.finditer(text)
     }
     consts = {m["var"]: int(m["value"], 16) for m in _CONST_RE.finditer(text)}
-    return functions, sites, consts
+    builds = {}
+    for m in _BUILD_RE.finditer(text):
+        fields = [f.strip().lstrip("&") for f in m["fields"].split(",") if f.strip()]
+        builds[m["version"]] = dict(zip(_BUILD_FIELDS, fields, strict=True))
+    return functions, sites, consts, builds
 
 
-FUNCTIONS, SITES, CONSTS = parse_header()
+FUNCTIONS, SITES, CONSTS, BUILDS = parse_header()
 
 
 class TestHeaderParsing(unittest.TestCase):
-    def test_every_function_and_site_is_parsed(self):
-        self.assertEqual(set(FUNCTIONS), {"kAdvance", "kIncrement"})
-        self.assertEqual(
-            set(SITES),
-            {"kAdvanceUseXP", "kAdvanceLoopEntry", "kAdvanceLoopRepeat", "kIncrementCheck", "kIncrementCount"},
-        )
-        for var, (_, function, _, pattern, length) in SITES.items():
-            self.assertIn(function, FUNCTIONS, var)
-            self.assertGreaterEqual(len(vs.pattern_bytes(pattern)), length, var)
+    def test_every_build_is_parsed(self):
+        self.assertEqual(set(BUILDS), {"3.2.0"})
+        self.assertEqual(set(BUILDS), set(FMAF_RVA))
+
+    def test_every_build_names_its_own_functions_and_sites(self):
+        for version, build in BUILDS.items():
+            for field in ("advance", "increment"):
+                self.assertIn(build[field], FUNCTIONS, version)
+            for field, function in (("useXP", "advance"), ("loopEntry", "advance"), ("loopRepeat", "advance"),
+                                    ("incrementCheck", "increment"), ("incrementCount", "increment")):
+                site = SITES[build[field]]
+                self.assertEqual(site[1], build[function], (version, field))
+                self.assertGreaterEqual(len(vs.pattern_bytes(site[3])), site[4], (version, field))
+            for field in ("loopTop", "loopExit", "incrementReturn"):
+                self.assertIn(build[field], CONSTS, version)
 
 
-@unittest.skipUnless(CSF_DLL.is_file(), "set BM_CSF_DLL to a CustomSkills.dll 3.2.0")
+@unittest.skipUnless(CSF_DLLS, "set BM_CSF_DLL to one or more CustomSkills.dll files")
 class TestAgainstCustomSkillsDll(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.pe = vs.PEFile(CSF_DLL)
-
-    def assert_matches(self, rva, pattern, what):
+    def matches(self, pe, rva, pattern):
         expected = vs.pattern_bytes(pattern)
-        actual = self.pe.bytes_at(rva, len(expected))
-        self.assertTrue(vs.matches(expected, actual), f"{what} at RVA {rva:#x}: {actual.hex(' ')}")
+        return vs.matches(expected, pe.bytes_at(rva, len(expected)))
 
-    def assert_site(self, var):
-        name, function, offset, pattern, _ = SITES[var]
-        self.assert_matches(FUNCTIONS[function][1] + offset, pattern, name)
+    def build_of(self, pe):
+        """The version whose two function entries this DLL has."""
+        found = [
+            version
+            for version, build in BUILDS.items()
+            if all(self.matches(pe, FUNCTIONS[build[f]][1], FUNCTIONS[build[f]][2]) for f in ("advance", "increment"))
+        ]
+        self.assertEqual(len(found), 1, f"entries match {found}")
+        return found[0]
 
-    def branch_target(self, var):
+    def branch_target(self, pe, site_var):
         """Offset from the function entry that the site's jcc rel32 goes to."""
-        _, function, offset, pattern, _ = SITES[var]
+        _, function, offset, pattern, _ = SITES[site_var]
         length = len(vs.pattern_bytes(pattern))
-        (rel,) = struct.unpack_from("<i", self.pe.bytes_at(FUNCTIONS[function][1] + offset + length - 4, 4))
+        (rel,) = struct.unpack_from("<i", pe.bytes_at(FUNCTIONS[function][1] + offset + length - 4, 4))
         return offset + length + rel
 
-    def test_function_entries(self):
-        for name, rva, entry in FUNCTIONS.values():
-            self.assert_matches(rva, entry, name)
+    def check(self, path):
+        pe = vs.PEFile(path)
+        version = self.build_of(pe)
+        build = BUILDS[version]
+        for field in ("useXP", "loopEntry", "loopRepeat", "incrementCheck", "incrementCount"):
+            name, function, offset, pattern, _ = SITES[build[field]]
+            rva = FUNCTIONS[function][1] + offset
+            self.assertTrue(self.matches(pe, rva, pattern), f"{version} {name} at RVA {rva:#x}")
+        for site, target in (("loopEntry", "loopExit"), ("loopRepeat", "loopTop"), ("incrementCheck", "incrementReturn")):
+            self.assertEqual(self.branch_target(pe, build[site]), CONSTS[build[target]], (version, site))
+        _, function, offset, _, _ = SITES[build["useXP"]]
+        call = FUNCTIONS[function][1] + offset
+        (rel,) = struct.unpack_from("<i", pe.bytes_at(call + 1, 4))
+        self.assertEqual(call + 5 + rel, FMAF_RVA[version], version)
 
-    def test_advance_use_xp(self):
-        self.assert_site("kAdvanceUseXP")
-        # The call goes to fmaf, the one the stub calls in its place.
-        _, _, offset, _, _ = SITES["kAdvanceUseXP"]
-        call = FUNCTIONS["kAdvance"][1] + offset
-        (rel,) = struct.unpack_from("<i", self.pe.bytes_at(call + 1, 4))
-        self.assertEqual(call + 5 + rel, 0xB8D20)
-
-    def test_advance_loop_entry(self):
-        self.assert_site("kAdvanceLoopEntry")
-        self.assertEqual(self.branch_target("kAdvanceLoopEntry"), CONSTS["kAdvanceLoopExit"])
-
-    def test_advance_loop_repeat(self):
-        self.assert_site("kAdvanceLoopRepeat")
-        self.assertEqual(self.branch_target("kAdvanceLoopRepeat"), CONSTS["kAdvanceLoopTop"])
-
-    def test_increment_check(self):
-        self.assert_site("kIncrementCheck")
-        self.assertEqual(self.branch_target("kIncrementCheck"), CONSTS["kIncrementReturn"])
-
-    def test_increment_count(self):
-        self.assert_site("kIncrementCount")
+    def test_every_given_dll(self):
+        for path in CSF_DLLS:
+            with self.subTest(dll=str(path)):
+                self.check(path)
 
 
 if __name__ == "__main__":
