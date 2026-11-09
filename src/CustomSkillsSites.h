@@ -145,6 +145,76 @@ inline constexpr Build kBuild320{ "3.2.0", &kAdvance320, &kIncrement320, &kAdvan
 	&kAdvanceLoopRepeat320, &kIncrementCheck320, &kIncrementCount320, kAdvanceLoopTop320, kAdvanceLoopExit320,
 	kIncrementReturn320 };
 
+// --- 3.1.0 ------------------------------------------------------------------
+// The same code compiled with other registers and offsets.
+
+inline constexpr Function kAdvance310{
+	"Skill::Advance",
+	0x40070,
+	"48 89 74 24 20 57 48 81 EC F0 00 00 00",
+	Reg::kRsi,
+	Reg::kRdi
+};
+
+// a_count stays live in edx, as in 3.2.0; r14d holds a copy.
+inline constexpr Function kIncrement310{
+	"Skill::Increment",
+	0x40600,
+	"85 D2 0F 84",
+	Reg::kRdi,
+	Reg::kRsi
+};
+
+inline constexpr std::uint32_t kAdvanceLoopTop310 = 0x160;
+inline constexpr std::uint32_t kAdvanceLoopExit310 = 0x30A;
+inline constexpr std::uint32_t kIncrementReturn310 = 0x37E;
+
+// As in 3.2.0, a `je` past the call keeps it to skill use.
+inline constexpr Site kAdvanceUseXP310{
+	"Skill::Advance use XP",
+	&kAdvance310,
+	0xAA,
+	"E8 29 C0 03 00 F3 0F 11 44 24 20",
+	5
+};
+
+inline constexpr Site kAdvanceLoopEntry310{
+	"Skill::Advance loop entry",
+	&kAdvance310,
+	0x10F,
+	"83 FF 64 0F 8D F2 01 00 00",
+	9
+};
+
+inline constexpr Site kAdvanceLoopRepeat310{
+	"Skill::Advance loop repeat",
+	&kAdvance310,
+	0x2E6,
+	"83 FF 64 0F 8C 71 FE FF FF",
+	9
+};
+
+inline constexpr Site kIncrementCheck310{
+	"Skill::Increment check",
+	&kIncrement310,
+	0x73,
+	"83 FE 64 0F 8D 02 03 00 00",
+	9
+};
+
+// r11, used after this site, is volatile: the stub saves it.
+inline constexpr Site kIncrementCount310{
+	"Skill::Increment count",
+	&kIncrement310,
+	0x80,
+	"B8 64 00 00 00 2B C6",
+	7
+};
+
+inline constexpr Build kBuild310{ "3.1.0", &kAdvance310, &kIncrement310, &kAdvanceUseXP310, &kAdvanceLoopEntry310,
+	&kAdvanceLoopRepeat310, &kIncrementCheck310, &kIncrementCount310, kAdvanceLoopTop310, kAdvanceLoopExit310,
+	kIncrementReturn310 };
+
 // Newest first; the installer takes the first whose function entries match.
-inline constexpr std::array kBuilds{ &kBuild320 };
+inline constexpr std::array kBuilds{ &kBuild320, &kBuild310 };
 }

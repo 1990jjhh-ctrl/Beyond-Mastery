@@ -45,7 +45,7 @@ _BUILD_FIELDS = ("advance", "increment", "useXP", "loopEntry", "loopRepeat", "in
                  "loopTop", "loopExit", "incrementReturn")
 
 # Where each build's `call fmaf` goes: the code the use-XP stub calls instead.
-FMAF_RVA = {"3.2.0": 0xB8D20}
+FMAF_RVA = {"3.2.0": 0xB8D20, "3.1.0": 0x7C148}
 
 
 def parse_header():
@@ -68,7 +68,7 @@ FUNCTIONS, SITES, CONSTS, BUILDS = parse_header()
 
 class TestHeaderParsing(unittest.TestCase):
     def test_every_build_is_parsed(self):
-        self.assertEqual(set(BUILDS), {"3.2.0"})
+        self.assertEqual(set(BUILDS), {"3.2.0", "3.1.0"})
         self.assertEqual(set(BUILDS), set(FMAF_RVA))
 
     def test_every_build_names_its_own_functions_and_sites(self):
