@@ -62,7 +62,7 @@ To test a build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/P
 
 `scripts/test.sh` runs every test: the C++ binaries in `tests/` (self-contained, no framework; add a new one to the script's loop) and the Python tests under stdlib `unittest`. Each test file starts with a comment saying what it covers.
 
-They can only cover code that runs without the game: the headers `Curves.h`, `CustomSkillsData.h`, `CustomSkillsSites.h`, `HookSites.h`, `Patterns.h`, `Stubs.h` and `Texts.h`, and the scripts. `tests/test_customskills_sites.py` also checks `CustomSkillsSites.h` against a real Custom Skills Framework 3.2.0 `CustomSkills.dll` when `BM_CSF_DLL` points to one, and skips that part otherwise. Everything else needs the game, and a cross-compiled DLL can crash on ABI or layout mismatches the compiler cannot see. **In-game testing is mandatory** before claiming a change works.
+They can only cover code that runs without the game: the headers `Curves.h`, `CustomSkillsData.h`, `CustomSkillsSites.h`, `HookSites.h`, `Patterns.h`, `Stubs.h` and `Texts.h`, and the scripts. `tests/test_customskills_sites.py` also checks `CustomSkillsSites.h` against real Custom Skills Framework `CustomSkills.dll` files, one per supported build, when `BM_CSF_DLL` lists them (separated by `:`), and skips that part otherwise. Everything else needs the game, and a cross-compiled DLL can crash on ABI or layout mismatches the compiler cannot see. **In-game testing is mandatory** before claiming a change works.
 
 ## Layout
 

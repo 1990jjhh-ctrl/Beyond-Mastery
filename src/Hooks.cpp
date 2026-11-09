@@ -603,7 +603,7 @@ bool SiteIsNeeded(const HookSites::Site& a_site) noexcept
 // --- Custom Skills Framework's level limit (FR-35) -----------------------
 
 // Bytes the loaded image spans, so no check reads past the end of a
-// CustomSkills.dll smaller than 3.2.0.
+// CustomSkills.dll smaller than a supported build's.
 [[nodiscard]] std::uint32_t ImageSize(std::uintptr_t a_base) noexcept
 {
 	const auto* dos = reinterpret_cast<const REX::W32::IMAGE_DOS_HEADER*>(a_base);
@@ -690,11 +690,39 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 	return nullptr;
 }
 
-// CSF 3.2.0 stops a custom skill at 100 in Skill::Advance and
+// The register a CustomSkillsSites::Reg names, as a stub reads it.
+[[nodiscard]] const Xbyak::Reg64& Reg64(CustomSkillsSites::Reg a_reg) noexcept
+{
+	using namespace Xbyak::util;
+	switch (a_reg) {
+	case CustomSkillsSites::Reg::kRsi:
+		return rsi;
+	case CustomSkillsSites::Reg::kRdi:
+		return rdi;
+	default:
+		return r14;
+	}
+}
+
+[[nodiscard]] const Xbyak::Reg32& Reg32(CustomSkillsSites::Reg a_reg) noexcept
+{
+	using namespace Xbyak::util;
+	switch (a_reg) {
+	case CustomSkillsSites::Reg::kRsi:
+		return esi;
+	case CustomSkillsSites::Reg::kRdi:
+		return edi;
+	default:
+		return r14d;
+	}
+}
+
+// A supported CSF build stops a custom skill at 100 in Skill::Advance and
 // Skill::Increment; each check is redirected to a stub that asks
-// CustomSkills::LevelLimit (Stubs.h). Both functions and every site
-// are checked before anything is written: on any mismatch nothing in
-// CSF changes, and its skills stay at 100.
+// CustomSkills::LevelLimit (Stubs.h). The build is the one whose function
+// entries match, and every site of it is checked before anything is
+// written: on any mismatch nothing in CSF changes, and its skills stay at
+// 100.
 [[nodiscard]] bool InstallCustomSkills()
 {
 	namespace Sites = CustomSkillsSites;
@@ -712,14 +740,25 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 	const auto base = reinterpret_cast<std::uintptr_t>(module);
 	const auto imageSize = ImageSize(base);
 
-	bool ready = true;
-	for (const auto* function : Sites::kFunctions) {
-		if (!MatchesInImage(base, imageSize, function->rva, function->entry)) {
-			spdlog::log(problem, "Hook site {} at {:#x}: {} -- not Custom Skills Framework 3.2.0's", function->name,
-				base + function->rva, StatusName(SiteStatus::kSignatureMismatch));
-			ready = false;
+	const Sites::Build* build = nullptr;
+	for (const auto* candidate : Sites::kBuilds) {
+		if (MatchesInImage(base, imageSize, candidate->advance->rva, candidate->advance->entry) &&
+			MatchesInImage(base, imageSize, candidate->increment->rva, candidate->increment->entry)) {
+			build = candidate;
+			break;
 		}
 	}
+	if (build == nullptr) {
+		g_signatureMismatch = g_signatureMismatch || wanted;
+		spdlog::log(problem,
+			"{} is not a supported build (PRD FR-35): its level limit is not patched, custom skills "
+			"stay at 100",
+			Compat::kCustomSkills);
+		return false;
+	}
+	logger::info("{} {} recognised", Compat::kCustomSkills, build->version);
+
+	bool ready = true;
 
 	// Each site, with the registers its stub reads and where it goes on.
 	struct Plan
@@ -731,13 +770,17 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 		std::uint32_t       branch;  // from the function's entry
 		std::uintptr_t      address{};
 	};
-	std::array plans{
-		Plan{ &Sites::kAdvanceLoopEntry, r14, esi, Stubs::LimitExit::kBranchIfReached, Sites::kAdvanceLoopExit },
-		Plan{ &Sites::kAdvanceLoopRepeat, r14, esi, Stubs::LimitExit::kBranchIfBelow, Sites::kAdvanceLoopTop },
-		Plan{ &Sites::kIncrementCheck, rdi, r14d, Stubs::LimitExit::kBranchIfReached, Sites::kIncrementReturn },
-		Plan{ &Sites::kIncrementCount, rdi, r14d, Stubs::LimitExit::kRemaining, 0 },
+	const auto& advanceSelf = Reg64(build->advance->self);
+	const auto& advanceLevel = Reg32(build->advance->level);
+	const auto& incrementSelf = Reg64(build->increment->self);
+	const auto& incrementLevel = Reg32(build->increment->level);
+	std::array  plans{
+		Plan{ build->loopEntry, advanceSelf, advanceLevel, Stubs::LimitExit::kBranchIfReached, build->loopExit },
+		Plan{ build->loopRepeat, advanceSelf, advanceLevel, Stubs::LimitExit::kBranchIfBelow, build->loopTop },
+		Plan{ build->incrementCheck, incrementSelf, incrementLevel, Stubs::LimitExit::kBranchIfReached,
+			build->incrementReturn },
+		Plan{ build->incrementCount, incrementSelf, incrementLevel, Stubs::LimitExit::kRemaining, 0 },
 	};
-	static_assert(std::tuple_size_v<decltype(plans)> == Sites::kLimitSites.size());
 
 	// The use-XP factor only with bScaleXPGainAbove100 (FR-9): off, it
 	// would be a no-op hook.
@@ -757,11 +800,11 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 	for (auto& plan : plans) {
 		plan.address = checkSite(*plan.site);
 	}
-	const auto useXP = scaleXP ? checkSite(Sites::kAdvanceUseXP) : 0;
+	const auto useXP = scaleXP ? checkSite(*build->useXP) : 0;
 
 	if (!ready) {
 		// The conflict box only matters once a skill is enabled; with
-		// none, CSF 3.2.0 or not, the player has asked for nothing.
+		// none, the player has asked for nothing.
 		g_signatureMismatch = g_signatureMismatch || wanted;
 		spdlog::log(problem, "{}'s level limit is not patched: custom skills stay at 100", Compat::kCustomSkills);
 		return false;
@@ -772,7 +815,7 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 	// Allocated here rather than by Trampoline::create, which would
 	// terminate the game if it found no memory. Never freed: CSF jumps
 	// into it until the process ends.
-	auto* block = AllocateNear(base + Sites::kAdvance.rva, Stubs::kCustomSkillsTrampolineSize);
+	auto* block = AllocateNear(base + build->advance->rva, Stubs::kCustomSkillsTrampolineSize);
 	if (block == nullptr) {
 		spdlog::log(problem, "No memory for the {} stubs within reach of CustomSkills.dll: custom skills stay at 100",
 			Compat::kCustomSkills);
@@ -799,7 +842,7 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 	std::uintptr_t useXPStub = 0;
 	if (scaleXP) {
 		Stubs::UseXPFactorStub code{ reinterpret_cast<std::uintptr_t>(&CustomSkills::UseXPFactor),
-			CallTarget(useXP), r14 };
+			CallTarget(useXP), advanceSelf };
 		useXPStub = place(code);
 	}
 
@@ -818,8 +861,8 @@ void WriteRel32(std::uintptr_t a_site, std::uint8_t a_opcode, std::uintptr_t a_t
 		logger::info("{} hooked at {:#x} (stub {:#x})", plans[i].site->name, plans[i].address, stubs[i]);
 	}
 	if (scaleXP) {
-		WriteRel32(useXP, 0xE8, useXPStub, Sites::kAdvanceUseXP.length);
-		logger::info("{} hooked at {:#x} (stub {:#x})", Sites::kAdvanceUseXP.name, useXP, useXPStub);
+		WriteRel32(useXP, 0xE8, useXPStub, build->useXP->length);
+		logger::info("{} hooked at {:#x} (stub {:#x})", build->useXP->name, useXP, useXPStub);
 	} else {
 		logger::info("bScaleXPGainAbove100 is off, so custom skills' use XP is not hooked");
 	}
