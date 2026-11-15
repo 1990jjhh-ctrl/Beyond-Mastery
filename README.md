@@ -3,41 +3,38 @@
 SKSE plugin for Skyrim AE 1.6.x and 1.7.x: raise each skill's cap above 100 in +10 steps, paid with perk points, dragon souls and filled black soul gems. Skill effects above 100 continue sub-linearly or asymptotically.
 
 - Download: [Nexus Mods](https://www.nexusmods.com/skyrimspecialedition/mods/196536) or the [GitHub releases](https://github.com/1990jjhh-ctrl/Beyond-Mastery/releases)
+- Installing, uninstalling and what players see, as on the Nexus page: [docs/nexus/description.md](docs/nexus/description.md#installation-instructions)
 - Requirements: [PRD.md](PRD.md)
-- What players see, as on the Nexus page: [docs/nexus/description.md](docs/nexus/description.md)
-- Building, testing and contributing: [docs/development.md](docs/development.md)
+- Testing, releasing, contributing and the source layout: [docs/development.md](docs/development.md)
 - How the engine patch sites were found: [docs/hook-points.md](docs/hook-points.md)
 
-## Install
+## Setup and build
 
-Requires [SKSE64](https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files)
-and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444).
+Development happens on a Linux host. The DLL is cross-compiled with clang-cl and lld-link against an xwin MSVC sysroot.
 
-Each [release](https://github.com/1990jjhh-ctrl/Beyond-Mastery/releases) has two
-archives with the same DLL, and one optional archive:
+The tools, CommonLibSSE-NG and the vcpkg ports come from the [skyrim-mod-toolchain](lib/skyrim-mod-toolchain/README.md) submodule (`git submodule update --init --recursive`). Its README explains [how a project uses it](lib/skyrim-mod-toolchain/README.md#use-it-in-a-project).
 
-- `BeyondMastery-<version>.zip`: install it with a mod manager (Mod Organizer 2,
-  Vortex), or extract it into `Data/`.
-- `BeyondMastery-<version>-SKSE-Plugins.zip`: extract it straight into
-  `Data/SKSE/Plugins/`.
-- `BeyondMastery-<version>-MCM.zip`, optional: the menu for Custom Skills
-  Framework skills. Install it like the first, and enable `BeyondMastery.esp`
-  in your plugin list; it needs SkyUI. See [PRD.md](PRD.md), FR-36.
+```bash
+lib/skyrim-mod-toolchain/scripts/setup.sh                 # one-time toolchain setup (see its README above)
+scripts/test.sh                                           # native tests only: fast, no cross-compiler needed
+scripts/build.sh                                          # configure, run test.sh, build BeyondMastery.dll, check its runtime imports
+lib/skyrim-mod-toolchain/scripts/format.sh src tests      # clang-format in place; --check only reports (also VS Code tasks "format: check/fix")
+lib/skyrim-mod-toolchain/scripts/lint.sh build/release src  # clang-tidy against the build's compile database
+```
 
-Neither contains `BeyondMastery.ini`: the plugin writes it on first start, and
-an update keeps your settings.
+`setup.sh` prints the environment variables `build.sh` needs; export them, since new shells don't inherit them. The first build compiles CommonLibSSE-NG and every vcpkg port and takes a long time; later builds are incremental in `build/release/`.
 
-## Uninstalling
+The plugin links the C++ runtime statically. Don't switch it back to the dynamic runtime: [`check_runtime_deps.py`](lib/skyrim-mod-toolchain/scripts/check_runtime_deps.py) explains why and fails the build if it happens.
 
-Skills already above 100 keep the level they reached — the engine stores skill
-levels as floats, so nothing resets — but they stop progressing once the plugin
-is gone, and nothing above 100 will rise again.
+The MCM's Papyrus scripts in `papyrus/` are compiled locally and the `.pex` files are committed in `papyrus/compiled/`, because CI can't run the Creation Kit's compiler. After changing a `.psc`, run `scripts/papyrus.sh` and commit the result:
 
-Reinstalling with the co-save intact restores every cap. Reinstalling *without*
-it (a new save, or a co-save that was deleted) puts every cap back to 100 while
-those skills keep their higher levels; they simply sit above their cap and stop
-earning XP until the cap is raised past them again. No resource you already
-spent is refunded.
+```bash
+SKYRIM_DIR=<Skyrim SE folder> PROTON_DIR=<Proton Experimental>/files scripts/papyrus.sh
+```
+
+It fetches SkyUI's headers, then runs the toolchain's [Papyrus compile](lib/skyrim-mod-toolchain/README.md#papyrus-compile-papyrussh), whose README says what it needs. Install the Creation Kit (Steam app 1946180) into `SKYRIM_DIR` and unpack its `Scripts.zip` into `Data/`, which gives the compiler's `Data/Source/Scripts`.
+
+To test a build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/Plugins/` while the game is closed. The log is `Documents/My Games/Skyrim Special Edition/SKSE/BeyondMastery.log`.
 
 ## License
 
