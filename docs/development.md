@@ -1,6 +1,6 @@
 # Development
 
-How Beyond Mastery is built, tested, released and put together. What the mod does is in [PRD.md](../PRD.md); installing and the project's purpose are in [README.md](../README.md).
+How Beyond Mastery is built, tested, released and put together. What the mod does is in [PRD.md](../PRD.md); the project's purpose is in [README.md](../README.md), installing the mod in [nexus/description.md](nexus/description.md#installation-instructions).
 
 ## Documents
 

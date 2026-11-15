@@ -16,7 +16,7 @@ Source code (GPL-3.0-or-later): https://github.com/1990jjhh-ctrl/Beyond-Mastery
 
 The menu for Custom Skills Framework skills (see below) is a small plugin, `BeyondMastery.esp`, in the optional MCM archive. It is an ESL, so it takes no load-order slot, and it needs [SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604); without it, without SkyUI, or with the plugin disabled, everything else works and only the menu is missing. It's safe to add to an existing save.
 
-**Uninstalling:** skills above 100 keep the level they reached, but stop progressing. Nothing you spent is refunded. Your raised caps stay in saves made with the mod; a save made without it drops them.
+**Uninstalling:** skills above 100 keep the level they reached, but stop progressing. Nothing you spent is refunded. Your raised caps are kept in the SKSE co-save, so reinstalling restores them. A new save, or one whose co-save is gone, has every cap back at 100: a skill above it keeps its level but earns no XP until you raise its cap past it again.
 
 # Main features
 
