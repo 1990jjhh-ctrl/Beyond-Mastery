@@ -54,7 +54,7 @@ The MCM's Papyrus scripts in `papyrus/` are compiled locally and the `.pex` file
 SKYRIM_DIR=<Skyrim SE folder> PROTON_DIR=<Proton Experimental>/files scripts/papyrus.sh
 ```
 
-It needs the Creation Kit (Steam app 1946180) installed into `SKYRIM_DIR`, with its `Scripts.zip` unpacked into `Data/` (the compiler's `Data/Source/Scripts`), and Proton Experimental, whose Wine bundles the Wine Mono the compiler needs. The header comment of `scripts/papyrus.sh` has the rest.
+It fetches SkyUI's headers, then runs the toolchain's [Papyrus compile](../lib/skyrim-mod-toolchain/README.md#papyrus-compile-papyrussh), whose README says what it needs. Install the Creation Kit (Steam app 1946180) into `SKYRIM_DIR` and unpack its `Scripts.zip` into `Data/`, which gives the compiler's `Data/Source/Scripts`.
 
 To test a build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/Plugins/` while the game is closed. The log is `Documents/My Games/Skyrim Special Edition/SKSE/BeyondMastery.log`.
 
