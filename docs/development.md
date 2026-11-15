@@ -54,7 +54,7 @@ The MCM's Papyrus scripts in `papyrus/` are compiled locally and the `.pex` file
 SKYRIM_DIR=<Skyrim SE folder> PROTON_DIR=<Proton Experimental>/files scripts/papyrus.sh
 ```
 
-It needs the Creation Kit (Steam app 1946180) installed into `SKYRIM_DIR`, with its `Scripts.zip` unpacked into `Data/` (the compiler's `Data/Source/Scripts`), and Proton Experimental, whose Wine bundles the Wine Mono the compiler needs. The header comment of `scripts/papyrus.sh` has the rest.
+It fetches SkyUI's headers, then runs the toolchain's [Papyrus compile](../lib/skyrim-mod-toolchain/README.md#papyrus-compile-papyrussh), whose README says what it needs. Install the Creation Kit (Steam app 1946180) into `SKYRIM_DIR` and unpack its `Scripts.zip` into `Data/`, which gives the compiler's `Data/Source/Scripts`.
 
 To test a build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/Plugins/` while the game is closed. The log is `Documents/My Games/Skyrim Special Edition/SKSE/BeyondMastery.log`.
 
@@ -83,9 +83,9 @@ Each source file starts with a comment describing it. As a map:
 | `src/State.*` | Caps and gates in the co-save |
 | `src/Compat.*` | Plugins Beyond Mastery adapts to (Experience, Custom Skills Framework) |
 | `src/Skills.h`, `src/Config.*`, `src/main.cpp` | Skill mapping, INI settings, entry point |
-| `papyrus/` | The MCM's Papyrus sources and, in `compiled/`, the committed `.pex`; `scripts/make_esp.py` generates its ESL plugin |
+| `papyrus/` | The MCM's Papyrus sources and, in `compiled/`, the committed `.pex`; `BeyondMastery.toml` describes its ESL plugin for the toolchain's `esp.py` |
 | `tests/`, `scripts/` | Tests; build, packaging and verification scripts |
-| `lib/skyrim-mod-toolchain` | Submodule: setup, format and lint scripts, the CI setup action, and CommonLibSSE-NG |
+| `lib/skyrim-mod-toolchain` | Submodule: setup, format and lint scripts, the plugin and Papyrus tools, the CI setup action, and CommonLibSSE-NG |
 
 ## Rules for code
 

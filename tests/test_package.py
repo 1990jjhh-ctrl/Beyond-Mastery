@@ -6,13 +6,13 @@ scripts."""
 
 import importlib.util
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def _load():
@@ -93,10 +93,16 @@ class TestArchives(unittest.TestCase):
             ],
         )
 
-    def test_the_plugin_is_the_generated_one(self):
-        make_esp = importlib.import_module("make_esp")
-        with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3-MCM.zip") as z:
-            self.assertEqual(z.read("BeyondMastery.esp"), make_esp.build())
+    def test_the_plugin_is_built_from_its_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            esp = pathlib.Path(tmp) / "BeyondMastery.esp"
+            subprocess.run(
+                [sys.executable, str(ROOT / "lib" / "skyrim-mod-toolchain" / "scripts" / "esp.py"), "build",
+                 str(ROOT / "papyrus" / "BeyondMastery.toml"), str(esp)],
+                check=True,
+            )
+            with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3-MCM.zip") as z:
+                self.assertEqual(z.read("BeyondMastery.esp"), esp.read_bytes())
 
     def test_the_scripts_are_the_checked_in_ones(self):
         with zipfile.ZipFile(self.out / "BeyondMastery-1.2.3-MCM.zip") as z:
