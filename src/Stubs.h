@@ -165,8 +165,8 @@ struct CharXPClampStub : Xbyak::CodeGenerator
 
 // --- Custom Skills Framework's level limit (FR-35) ------------------------
 //
-// CSF 3.2.0 compares a custom skill's level with a hard-coded 100 at four
-// sites (CustomSkillsSites.h). Each is replaced by a 5-byte jmp to a
+// CSF compares a custom skill's level with a hard-coded 100 at four sites
+// (CustomSkillsSites.h, per supported build). Each is replaced by a 5-byte jmp to a
 // LevelLimitStub, which asks the callee for the skill's limit, redoes the
 // replaced instructions against it and jumps back to whichever original
 // target applies.
