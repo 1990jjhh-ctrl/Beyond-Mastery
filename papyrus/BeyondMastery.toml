@@ -1,0 +1,26 @@
+# BeyondMastery.esp, the MCM's plugin, for the toolchain's esp.py
+# (lib/skyrim-mod-toolchain/README.md, "Plugin: esp.py"). scripts/package.py
+# builds it into the MCM archive.
+#
+# One quest, started with the game, holds the MCM script. Its player alias
+# carries SkyUI's SKI_PlayerLoadGameAlias, which calls the MCM's OnGameReload
+# on every load.
+
+masters = ["Skyrim.esm"]
+esl = true
+
+[[quests]]
+editor_id = "BeyondMasteryMCM"
+object_id = 0x800
+start_game_enabled = true
+run_once = true
+
+[[quests.scripts]]
+name = "BeyondMasteryMCM"
+
+[[quests.aliases]]
+name = "PlayerAlias"
+forced_ref = { master = "Skyrim.esm", object_id = 0x14 }  # the player
+
+[[quests.aliases.scripts]]
+name = "SKI_PlayerLoadGameAlias"

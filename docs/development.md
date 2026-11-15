@@ -83,9 +83,9 @@ Each source file starts with a comment describing it. As a map:
 | `src/State.*` | Caps and gates in the co-save |
 | `src/Compat.*` | Plugins Beyond Mastery adapts to (Experience, Custom Skills Framework) |
 | `src/Skills.h`, `src/Config.*`, `src/main.cpp` | Skill mapping, INI settings, entry point |
-| `papyrus/` | The MCM's Papyrus sources and, in `compiled/`, the committed `.pex`; `scripts/make_esp.py` generates its ESL plugin |
+| `papyrus/` | The MCM's Papyrus sources and, in `compiled/`, the committed `.pex`; `BeyondMastery.toml` describes its ESL plugin for the toolchain's `esp.py` |
 | `tests/`, `scripts/` | Tests; build, packaging and verification scripts |
-| `lib/skyrim-mod-toolchain` | Submodule: setup, format and lint scripts, the CI setup action, and CommonLibSSE-NG |
+| `lib/skyrim-mod-toolchain` | Submodule: setup, format and lint scripts, the plugin and Papyrus tools, the CI setup action, and CommonLibSSE-NG |
 
 ## Rules for code
 
