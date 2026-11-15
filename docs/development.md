@@ -1,6 +1,6 @@
 # Development
 
-How Beyond Mastery is built, tested, released and put together. What the mod does is in [PRD.md](../PRD.md); the project's purpose is in [README.md](../README.md), installing the mod in [nexus/description.md](nexus/description.md#installation-instructions).
+How Beyond Mastery is tested, released and put together. What the mod does is in [PRD.md](../PRD.md); the project's purpose and how to set it up and build it are in [README.md](../README.md), installing the mod is in [nexus/description.md](nexus/description.md#installation-instructions).
 
 ## Documents
 
@@ -29,34 +29,6 @@ The version is `VERSION` in `CMakeLists.txt`'s `project()` call, and nowhere els
 3. The build workflow refuses a tag that doesn't match the version, then publishes a GitHub Release with the archives (`scripts/package.py` describes them). If the PR's or `master`'s build of the exact same tree is still available, it's reused instead of rebuilt.
 
 `python3 scripts/package.py` builds the same archives locally, into `dist/`.
-
-## Build
-
-Development happens on a Linux host. The DLL is cross-compiled with clang-cl and lld-link against an xwin MSVC sysroot.
-
-The tools, CommonLibSSE-NG and the vcpkg ports come from the [skyrim-mod-toolchain](../lib/skyrim-mod-toolchain/README.md) submodule (`git submodule update --init --recursive`). Its README explains [how a project uses it](../lib/skyrim-mod-toolchain/README.md#use-it-in-a-project).
-
-```bash
-lib/skyrim-mod-toolchain/scripts/setup.sh                 # one-time toolchain setup (see its README above)
-scripts/test.sh                                           # native tests only: fast, no cross-compiler needed
-scripts/build.sh                                          # configure, run test.sh, build BeyondMastery.dll, check its runtime imports
-lib/skyrim-mod-toolchain/scripts/format.sh src tests      # clang-format in place; --check only reports (also VS Code tasks "format: check/fix")
-lib/skyrim-mod-toolchain/scripts/lint.sh build/release src  # clang-tidy against the build's compile database
-```
-
-`setup.sh` prints the environment variables `build.sh` needs; export them, since new shells don't inherit them. The first build compiles CommonLibSSE-NG and every vcpkg port and takes a long time; later builds are incremental in `build/release/`.
-
-The plugin links the C++ runtime statically. Don't switch it back to the dynamic runtime: [`check_runtime_deps.py`](../lib/skyrim-mod-toolchain/scripts/check_runtime_deps.py) explains why and fails the build if it happens.
-
-The MCM's Papyrus scripts in `papyrus/` are compiled locally and the `.pex` files are committed in `papyrus/compiled/`, because CI can't run the Creation Kit's compiler. After changing a `.psc`, run `scripts/papyrus.sh` and commit the result:
-
-```bash
-SKYRIM_DIR=<Skyrim SE folder> PROTON_DIR=<Proton Experimental>/files scripts/papyrus.sh
-```
-
-It fetches SkyUI's headers, then runs the toolchain's [Papyrus compile](../lib/skyrim-mod-toolchain/README.md#papyrus-compile-papyrussh), whose README says what it needs. Install the Creation Kit (Steam app 1946180) into `SKYRIM_DIR` and unpack its `Scripts.zip` into `Data/`, which gives the compiler's `Data/Source/Scripts`.
-
-To test a build, copy `build/release/BeyondMastery.dll` to `<Skyrim>/Data/SKSE/Plugins/` while the game is closed. The log is `Documents/My Games/Skyrim Special Edition/SKSE/BeyondMastery.log`.
 
 ## Tests
 
@@ -96,4 +68,4 @@ Each source file starts with a comment describing it. As a map:
 - **Facts from other mods are claims to re-verify.** IDs, offsets and patterns taken from another mod (see hook-points.md, "Sources") must be confirmed in the disassembly. Nothing may be copied from a mod without a license.
 - **Formula constants come from the disassembly or from GMSTs read at runtime**, not from wiki values.
 - **Members whose layout differs between runtimes are reached through CommonLibSSE-NG's runtime accessors** (`RUNTIME_*_ACCESSOR*`, `GetXRuntimeData()`, `REL::RelocateMember*`), never a hardcoded offset or a direct member. The plugin's `StructCompatibility::Independent` claim depends on it.
-- **Dependencies must be GPL-compatible**, since the project is GPL-3.0-or-later (see README.md).
+- **Dependencies must be GPL-compatible**, since the project is GPL-3.0-or-later (see [README.md](../README.md#license)).
